@@ -1,0 +1,28 @@
+CompileFlags:
+  Add:
+    - -I/home/sghys/projects/CPSC524-modeling/third-party/doctest
+    - -I/home/sghys/projects/CPSC524-modeling/src
+    - -I/home/sghys/projects/CPSC524-modeling/third-party/eigen
+  CompilationDatabase: ./compile_commands.json
+
+Diagnostics:
+  ClangTidy:
+    Add:
+      - bugprone-*
+      - performance-*
+    Remove:
+      - readability-static-definition-in-anonymous-namespace
+      - readability-magic-numbers
+      - readability-function-cognitive-complexity
+      - readability-identifier-length
+      - misc-definitions-in-headers
+      - modernize-use-trailing-return-type
+      - modernize-use-auto
+      - cppcoreguidelines-*
+      - google-*
+      - hicpp-*
+
+InlayHints:
+  Enabled: true
+  ParameterNames: true
+  DeducedTypes: true
