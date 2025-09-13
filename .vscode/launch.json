@@ -20,6 +20,19 @@
         { "description": "Enable pretty-printing for gdb", "text": "-enable-pretty-printing", "ignoreFailures": true }
       ],
       "externalConsole": false
+    },
+    {
+      "name": "Debug Tests",
+      "type": "cppdbg",
+      "request": "launch",
+      "MIMode": "gdb",
+      "program": "${workspaceFolder}/build-dbg/bin/minimesh_tests",
+      "cwd": "${workspaceFolder}",
+      "args": [],
+      "setupCommands": [
+        { "description": "Enable pretty-printing for gdb", "text": "-enable-pretty-printing", "ignoreFailures": true }
+      ],
+      "externalConsole": false
     }
   ]
 }

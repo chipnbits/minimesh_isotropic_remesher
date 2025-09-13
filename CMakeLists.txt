@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.11)
 project(minimesh)
 
-
 ##
 ## Set C++ standard and import some macros
 ##
@@ -18,8 +17,6 @@ option(MINIMESH_WITH_EXTRAS "The contents of the private REPO are present" 0)
 ##
 minimesh_set_policy_to_new(CMP0072) #related to how OpenGL is found
 minimesh_set_policy_to_new(CMP0074) #FindPackage uses ..._ROOT
-
-
 
 ##
 ##  Find libraries that are shared among all projects
@@ -81,6 +78,11 @@ if(MINIMESH_WITH_GUI)
   add_subdirectory(src/minimesh/viz) # library
   add_subdirectory(src/minimesh/gui) # executable
 endif()
+
+# Test framework
+include(CTest)
+enable_testing()
+add_subdirectory(src/minimesh/test)
 
 # The extras code -- not part of the public repo.
 if(MINIMESH_WITH_EXTRAS)
