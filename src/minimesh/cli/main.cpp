@@ -9,7 +9,7 @@
 
 #include <cstdio>
 
-#include <minimesh/core/util/assert.hpp>
+#include <minimesh/core/util/assert.hpp> 
 #include <minimesh/core/util/macros.hpp>
 
 #include <minimesh/core/mohe/mesh_connectivity.hpp>
@@ -22,7 +22,7 @@ using namespace minimesh;
 // EXAMPLE UTILITY FUNCTIONS
 // ===================
 
-namespace 
+namespace  // Mark the start of anonymous namespace (cant be called from outside)
 {
 
 //

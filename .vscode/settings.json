@@ -1,41 +1,22 @@
 {
-
-    // REMOVE the entire "cmake": { ... } block you have now,
-  // and ADD these flat keys at top level:
-
-  "cmake.useCMakePresets": true,
+  // --- CMake / run args ---
+  "cmake.useCMakePresets": "always",
   "cmake.configureOnOpen": true,
   "cmake.defaultConfigurePreset": "debug",
   "cmake.defaultBuildPreset": "debug",
-
-  // Build then run/debug your GUI target
   "cmake.buildBeforeRun": true,
   "cmake.defaultBuildTarget": "minimeshgui",
+  "cmake.runConfig":  { "args": ["${workspaceFolder}/mesh/cube.obj"], "cwd": "${workspaceFolder}" },
+  "cmake.debugConfig":{ "args": ["${workspaceFolder}/mesh/cube.obj"], "cwd": "${workspaceFolder}" },
+  "cmake.copyCompileCommands": "${workspaceFolder}/compile_commands.json",
 
-  // Default args and F5 pass your mesh automatically
-  "cmake.runConfig": {
-    "args": ["${workspaceFolder}/mesh/cube.obj"],
-    "cwd": "${workspaceFolder}"
-  },
-  "cmake.debugConfig": {
-    "args": ["${workspaceFolder}/mesh/cube.obj"],
-    "cwd": "${workspaceFolder}"
-  }
-  //
-  // Editor options
-  //
-  "editor": {
-    "fontSize": 19,
-    "tabSize": 2,
-    "insertSpaces": true,
-    "detectIndentation": false,
-    "quickSuggestions": false,
-    "autoClosingBrackets": false,
-    "renderIndentGuides": false,
-  },
-  //
-  // Files to ignore
-  //
+  // --- cpptools off for IntelliSense; keep for debugging ---
+  "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+  "C_Cpp.intelliSenseEngine": "disabled",
+  "C_Cpp.clang_format_style": "file",
+  "C_Cpp.clang_format_fallbackStyle": "Google",
+
+  // --- Hide/unhide files in Explorer ---
   "files.exclude": {
     "**/*~": true,
     "**/#*": true,
@@ -45,35 +26,20 @@
     "third-party": true,
     "debugger": false,
     "webpage": true,
-    "mesh": false,
+    "mesh": false
   },
 
-
-  //
-  // Open files with double click rather than one click
-  //
-  "workbench.list.openMode": "doubleClick",
-  //
-  // Some clang-format stuff
-  //
-  // "clang-format.executable": "/usr/bin/clang-format-6.0",
-  "C_Cpp.clang_format_style": "file",
-  "C_Cpp.clang_format_fallbackStyle": "Google",
-  //
-  //  Don't parse the code all the time
-  //  so that vscode does not freez often.
-  //
-  "C_Cpp.workspaceParsingPriority": "high",
-  //
-  // Use solarized color theme!
-  //
-  "workbench.colorTheme": "Tomorrow Night Blue",
-  //
-  //
-  //
+  // --- Make config files open as JSON/JSONC; keep your C++ mappings below ---
   "files.associations": {
+    "CMakePresets.json": "json",
+    "CMakeUserPresets.json": "json",
+    "launch.json": "jsonc",
+    "tasks.json": "jsonc",
+    "settings.json": "jsonc",
+
     "armadillo": "cpp",
     "*.ipp": "cpp",
+    "*.tcc": "cpp",
     "cctype": "cpp",
     "clocale": "cpp",
     "cmath": "cpp",
@@ -88,7 +54,6 @@
     "cwctype": "cpp",
     "array": "cpp",
     "atomic": "cpp",
-    "*.tcc": "cpp",
     "chrono": "cpp",
     "codecvt": "cpp",
     "condition_variable": "cpp",
@@ -141,14 +106,5 @@
     "string": "cpp",
     "iomanip": "cpp",
     "cfenv": "cpp"
-  },
-  "editor.autoClosingBrackets": "never",
-  "editor.autoClosingQuotes": "never",
-  "editor.autoSurround": "never",
-  "editor.guides.indentation": false,
-  "editor.quickSuggestions": {
-    "comments": "off",
-    "strings": "off",
-    "other": "off"
-  },
+  }
 }

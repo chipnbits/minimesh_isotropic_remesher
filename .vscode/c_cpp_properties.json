@@ -28,7 +28,6 @@
       },
       "includePath": [
         "${workspaceFolder}/src",
-        "${workspaceFolder}/extras/src",
         "/usr/include",
         "${workspaceFolder}/third-party/glui/bin-opensuse-gcc731/debug/include",
         "${workspaceFolder}/third-party/freeglut/bin-opensuse-gcc731/debug/include",
