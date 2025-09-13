@@ -1,0 +1,35 @@
+### HONGYI
+
+cmake .. ^
+-G"Visual Studio 15 2017 Win64" ^
+-DCMAKE_BUILD_TYPE=Release ^
+-DCMAKE_INSTALL_PREFIX="C:/Libraries/OpenGL/glui-master/build-shayan/install" ^
+-DGLUT_glut_LIBRARY="C:/Libraries/OpenGL/freeglut/lib/x64/freeglut.lib" ^
+-DGLUT_INCLUDE_DIR="C:/Libraries/OpenGL/freeglut/include/GL" ^
+-DGLUT_FOUND=TRUE 
+
+
+### SHAYAN
+# Download FREEGLUT from 
+
+# Release
+
+cmake .. ^
+-G"Visual Studio 15 2017 Win64" ^
+-DCMAKE_BUILD_TYPE=Release ^
+-DCMAKE_INSTALL_PREFIX="C:/Libraries/OpenGL/glui-master/build-shayan/install" ^
+-DGLUT_glut_LIBRARY="C:/Libraries/OpenGL/freeglut/lib/x64/freeglut.lib" ^
+-DGLUT_INCLUDE_DIR="C:/Libraries/OpenGL/freeglut/include/GL" ^
+-DGLUT_FOUND=TRUE 
+
+
+
+# Debug
+
+cmake .. ^
+-G"Visual Studio 15 2017 Win64" \
+-DCMAKE_BUILD_TYPE=Debug \
+-DCMAKE_INSTALL_PREFIX="/d/Libraries/glui/Debug" ^
+-DGLUT_glut_LIBRARY="C:/Libraries/OpenGL/freeglut/lib/x64/freeglut.lib" ^
+-DGLUT_INCLUDE_DIR="C:/Libraries/OpenGL/freeglut/include/GL" ^
+-DGLUT_FOUND=TRUE 

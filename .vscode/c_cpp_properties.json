@@ -30,8 +30,9 @@
         "${workspaceFolder}/src",
         "${workspaceFolder}/extras/src",
         "/usr/include",
-        "/home/hooshi/code/glui/2.36/debug/include",
-        "${HOME}/code/eigen/default"
+        "${workspaceFolder}/third-party/glui/bin-opensuse-gcc731/debug/include",
+        "${workspaceFolder}/third-party/freeglut/bin-opensuse-gcc731/debug/include",
+        "${workspaceFolder}/third-party/eigen"
       ],
       "defines": [],
       "cStandard": "c11",
