@@ -106,5 +106,5 @@
     "string": "cpp",
     "iomanip": "cpp",
     "cfenv": "cpp"
-  }
+  },
 }
