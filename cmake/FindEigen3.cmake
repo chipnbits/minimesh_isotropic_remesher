@@ -8,7 +8,7 @@ find_path(EIGEN3_INCLUDE_DIRS Names Eigen/Dense
   )
 
 find_package(PackageHandleStandardArgs REQUIRED)
-find_package_handle_standard_args(EIGEN3 REQUIRED_VARS EIGEN3_INCLUDE_DIRS)
+find_package_handle_standard_args(Eigen3 REQUIRED_VARS EIGEN3_INCLUDE_DIRS)
 set(EIGEN3_LIBRARIES "")
 set(EIGEN3_DLLS "")
 

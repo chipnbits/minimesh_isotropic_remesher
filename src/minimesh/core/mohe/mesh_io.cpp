@@ -276,7 +276,7 @@ void Mesh_io::read_off(const std::string & fname)
 	// Read the number of verts and faces and edges
 	skip_comment();
 	success = fscanf(fl, "%d %d %*d", &n_verts, &n_faces);
-	assert(success = 2);
+	assert(success == 2);
 	MINIMESH_UNUSED( success );
 	vcoord.reserve(n_verts * 3);
 	ftovert.reserve(n_faces * 3);
