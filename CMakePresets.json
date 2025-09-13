@@ -1,0 +1,58 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 19
+  },
+  "configurePresets": [
+    {
+      "name": "debug",
+      "displayName": "Debug (build-dbg)",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-dbg",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "EIGEN3_DIR": "${sourceDir}/third-party/eigen",
+        "FREEGLUT_DIR": "${sourceDir}/third-party/freeglut/bin-opensuse-gcc731/debug",
+        "GLUI_DIR": "${sourceDir}/third-party/glui/bin-opensuse-gcc731/debug"
+      }
+    },
+    {
+      "name": "relwithdebinfo",
+      "displayName": "RelWithDebInfo (build-opt)",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-opt",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "EIGEN3_DIR": "${sourceDir}/third-party/eigen",
+        "FREEGLUT_DIR": "${sourceDir}/third-party/freeglut/bin-opensuse-gcc731/release",
+        "GLUI_DIR": "${sourceDir}/third-party/glui/bin-opensuse-gcc731/release"
+      }
+    },
+    {
+      "name": "Custom configure preset",
+      "displayName": "Custom configure preset",
+      "description": "Sets Ninja generator, build and install directory",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "jobs": 6
+    },
+    {
+      "name": "relwithdebinfo",
+      "configurePreset": "relwithdebinfo",
+      "jobs": 6
+    }
+  ]
+}

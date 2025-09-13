@@ -1,4 +1,26 @@
 {
+
+    // REMOVE the entire "cmake": { ... } block you have now,
+  // and ADD these flat keys at top level:
+
+  "cmake.useCMakePresets": true,
+  "cmake.configureOnOpen": true,
+  "cmake.defaultConfigurePreset": "debug",
+  "cmake.defaultBuildPreset": "debug",
+
+  // Build then run/debug your GUI target
+  "cmake.buildBeforeRun": true,
+  "cmake.defaultBuildTarget": "minimeshgui",
+
+  // Default args and F5 pass your mesh automatically
+  "cmake.runConfig": {
+    "args": ["${workspaceFolder}/mesh/cube.obj"],
+    "cwd": "${workspaceFolder}"
+  },
+  "cmake.debugConfig": {
+    "args": ["${workspaceFolder}/mesh/cube.obj"],
+    "cwd": "${workspaceFolder}"
+  }
   //
   // Editor options
   //
@@ -17,23 +39,16 @@
   "files.exclude": {
     "**/*~": true,
     "**/#*": true,
-    "build-dbg": true,
-    "build-opt": true,
+    "build-dbg": false,
+    "build-opt": false,
     "third-party.zip": true,
     "third-party": true,
-    "debugger": true,
+    "debugger": false,
     "webpage": true,
-    "mesh": true,
+    "mesh": false,
   },
-  //
-  // IF USING CMAKE
-  //
-  "cmake": {
-    "buildDirectory": "${workspaceRoot}/build-dbg",
-    "parallelJobs": 6,
-    "useCMakeServer": false,
-    "sourceDirectory": "${workspaceRoot}"
-  },
+
+
   //
   // Open files with double click rather than one click
   //
