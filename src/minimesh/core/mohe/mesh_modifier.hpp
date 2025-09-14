@@ -46,6 +46,12 @@ public:
 	//
 	bool flip_edge(const int he_index);
 
+	// Subdivide all triangles in the mesh using Loop subdivision.
+	// Note that this method modifies the mesh in place.
+	// The input mesh must be a triangular mesh.
+	// The method returns true if the operation was successful, and false otherwise.
+	bool subdivide_loop();
+
 
 private:
 	// pointer to the mesh that we are working on.
