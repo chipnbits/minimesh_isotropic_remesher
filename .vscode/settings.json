@@ -20,10 +20,12 @@
   "files.exclude": {
     "**/*~": true,
     "**/#*": true,
+    "**/.cache*": true,
     "build-dbg": false,
     "build-opt": false,
     "third-party.zip": true,
     "third-party": true,
+    "mesh.zip": true,
     "debugger": false,
     "webpage": true,
     "mesh": false

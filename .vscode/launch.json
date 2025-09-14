@@ -5,13 +5,14 @@
 {
   "version": "0.2.0",
   "configurations": [
+    
     {
       "name": "CMake: Debug active target",
       "type": "cppdbg",
       "request": "launch",
       "MIMode": "gdb",
       // Always run the target chosen in CMake's status bar:
-      "program": "${command:cmake.launchTargetPath}",
+      "program": "${workspaceFolder}/build-dbg/src/minimesh/",
       // Work in the repo root so mesh paths are stable:
       "cwd": "${workspaceFolder}",
       // Default mesh arg:
@@ -26,7 +27,7 @@
       "type": "cppdbg",
       "request": "launch",
       "MIMode": "gdb",
-      "program": "${workspaceFolder}/build-dbg/bin/minimesh_tests",
+      "program": "${workspaceFolder}/build-dbg/src/minimesh/test/minimesh_tests",
       "cwd": "${workspaceFolder}",
       "args": [],
       "setupCommands": [
