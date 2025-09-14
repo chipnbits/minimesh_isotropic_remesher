@@ -3,6 +3,7 @@ set(TARGET_NAME minimesh_tests)
 add_executable(${TARGET_NAME}
   test_mesh_properties.cpp
   test_subdivision.cpp
+  test_mesh_utils.cpp
 )
 
 # Link your core lib
@@ -25,12 +26,11 @@ set_target_properties(${TARGET_NAME} PROPERTIES
 
 # Register CTests (shows up in VS Code too)
 # Set working dir so 'mesh/cube.obj' paths resolve.
-add_test(NAME minimesh.mesh COMMAND ${TARGET_NAME} --test-case="*mesh*")
-set_tests_properties(minimesh.mesh PROPERTIES
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-)
+add_test(NAME minimesh.mesh   COMMAND ${TARGET_NAME} --test-case=*mesh*)
+set_tests_properties(minimesh.mesh   PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
-add_test(NAME minimesh.subdiv COMMAND ${TARGET_NAME} --test-case="*subdiv*")
-set_tests_properties(minimesh.subdiv PROPERTIES
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-)
+add_test(NAME minimesh.subdiv COMMAND ${TARGET_NAME} --test-case=*subdiv*)
+set_tests_properties(minimesh.subdiv PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+add_test(NAME minimesh.utils  COMMAND ${TARGET_NAME} --test-case=*utils* --success)
+set_tests_properties(minimesh.utils  PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
