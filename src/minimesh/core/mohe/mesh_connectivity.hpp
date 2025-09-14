@@ -19,7 +19,7 @@ namespace mohecore
 {
 
 //
-// Surface_mesh_connectivity
+// Mesh_connectivity
 //
 // A class for storing and traversing a mesh using the half-edge
 // data structure.
@@ -74,7 +74,7 @@ public:
 		bool is_active = false;
 
 		// Please do not create this class yourself.
-		// Use Surface_mesh_connectivity::add_vertex()
+		// Use Mesh_connectivity::add_vertex()
 		// And then access data via Vertex_iterator::data()
 		Vertex_data() = default;
 		friend class Mesh_connectivity;
@@ -112,7 +112,7 @@ public:
 		bool is_active = false;
 
 		// Please do not create this class yourself.
-		// Use Surface_mesh_connectivity::add_half_edge()
+		// Use Mesh_connectivity::add_half_edge()
 		// And then access data via Face_iterator::data()
 		Half_edge_data() = default;
 		friend class Mesh_connectivity;
@@ -138,7 +138,7 @@ public:
 		bool is_active = false;
 
 		// Please do not create this class yourself.
-		// Use Surface_mesh_connectivity::add_face()
+		// Use Mesh_connectivity::add_face()
 		// And then access data via Face_iterator::data()
 		Face_data() = default;
 		friend class Mesh_connectivity;
@@ -196,7 +196,7 @@ public:
 		// clang-format on
 
 		// Don't create this class yourself. Use
-		// Surface_mesh_connectivity::vertex_at()
+		// Mesh_connectivity::vertex_at()
 		friend class Mesh_connectivity;
 	};
 
@@ -253,7 +253,7 @@ public:
 		// clang-format on
 
 		// Don't create this class yourself. Use
-		// Surface_mesh_connectivity::half_edge_at()
+		// Mesh_connectivity::half_edge_at()
 		friend class Mesh_connectivity;
 	};
 
@@ -299,7 +299,7 @@ public:
 		// clang-format on
 
 		// Don't create this class yourself. Use
-		// Surface_mesh_connectivity::half_edge_at()
+		// Mesh_connectivity::half_edge_at()
 		friend class Mesh_connectivity;
 	};
 
@@ -339,7 +339,7 @@ public:
 		Vertex_ring_iterator(Half_edge_iterator half_edge);
 
 		// Don't create this class yourself. Use
-		// Surface_mesh_connectivity::half_edge_at()
+		// Mesh_connectivity::half_edge_at()
 		friend class Mesh_connectivity;
 	};
 
