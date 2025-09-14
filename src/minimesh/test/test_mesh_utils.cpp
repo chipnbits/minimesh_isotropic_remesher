@@ -3,7 +3,7 @@
 #include <Eigen/Core>
 #include <minimesh/core/mohe/mesh_connectivity.hpp>
 #include <minimesh/core/mohe/mesh_io.hpp>
-#include <minimesh/core/mohe/mesh_modifier.hpp>
+#include <minimesh/core/mohe/mesh_analysis.hpp>
 
 #include <iostream>
 #include <string>
@@ -25,30 +25,28 @@ static bool load_test_mesh(mohecore::Mesh_connectivity& mesh, const std::string&
 
 TEST_CASE("Mesh utils - is_triangular_mesh") {
     mohecore::Mesh_connectivity mesh;
-    mohecore::Mesh_modifier modifier(mesh);
 
     // Cube should be triangular (made of triangles)
     REQUIRE(load_test_mesh(mesh, "mesh/cube.obj"));
-    CHECK(modifier.is_triangular_mesh());
+    CHECK(mohecore::analysis::is_triangular_mesh(mesh));
 
     // Camel should also be triangular (made of triangles)
     REQUIRE(load_test_mesh(mesh, "mesh/camel.obj"));
-    CHECK(modifier.is_triangular_mesh());
+    CHECK(mohecore::analysis::is_triangular_mesh(mesh));
 
     INFO("Triangular mesh check completed");
 }
 
 TEST_CASE("Mesh utils - count_connected_components") {
     mohecore::Mesh_connectivity mesh;
-    mohecore::Mesh_modifier modifier(mesh);
 
     // Single connected cube should have 1 component
     REQUIRE(load_test_mesh(mesh, "mesh/cube.obj"));
-    CHECK(modifier.count_connected_components() == 1);
+    CHECK(mohecore::analysis::count_connected_components(mesh) == 1);
 
     // Octopus mesh has 4 connected components (body + 3 separate pieces)
     REQUIRE(load_test_mesh(mesh, "mesh/octopus.obj"));
-    int octopus_components = modifier.count_connected_components();
+    int octopus_components = mohecore::analysis::count_connected_components(mesh);
     MESSAGE("Octopus mesh has ", octopus_components, " connected components");
     INFO("Expected 4, got ", octopus_components);
     CHECK(octopus_components == 4);

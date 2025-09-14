@@ -1,5 +1,6 @@
 #include <minimesh/core/mohe/mesh_modifier.hpp>
 #include <minimesh/core/util/assert.hpp>
+#include <queue>
 
 namespace minimesh
 {
@@ -117,22 +118,10 @@ bool Mesh_modifier::flip_edge(const int he_index)
 
 bool Mesh_modifier::subdivide_loop()
 {
-	// Make sure that the input mesh is a triangular mesh
-	for(int f = 0; f < mesh().n_total_faces(); ++f)
-	{
-		Mesh_connectivity::Face_iterator face = mesh().face_at(f);
-		if(face.is_active() && face.n_vertices() != 3)
-		{
-			// Active Non-triangular face found
-			return false;
-		}
-	}
 	
 	// Placeholder
 	return true;
 }
-
-	// Second pass: Subdivide each triangle into four
 
 
 } // end of mohecore

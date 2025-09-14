@@ -27,6 +27,8 @@ set(SOURCE_FILES
   mohe/mesh_io.cpp
   mohe/mesh_modifier.hpp
   mohe/mesh_modifier.cpp
+  mohe/mesh_analysis.hpp
+  mohe/mesh_analysis.cpp
  )
 
  
