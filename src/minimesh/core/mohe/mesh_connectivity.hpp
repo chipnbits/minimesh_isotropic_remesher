@@ -316,7 +316,7 @@ public:
 
 		// Attempts to see if the vertex is on the boundary. If so returns
 		// true, and false otherwise.
-		// In the event of success puts the half_edge to one on the boundary
+		// In the event of success, puts the half_edge to one on the boundary
 		// that points to the vertex of interest.
 		bool reset_boundary();
 

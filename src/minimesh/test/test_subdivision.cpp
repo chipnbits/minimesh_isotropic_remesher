@@ -23,7 +23,7 @@ static bool load_test_mesh(mohecore::Mesh_connectivity& mesh, const std::string&
 }
 
 // Helper function to validate basic subdivision properties
-static bool validate_subdivision_properties(mohecore::Mesh_connectivity& original,
+[[maybe_unused]] static bool validate_subdivision_properties(mohecore::Mesh_connectivity& original,
                                            mohecore::Mesh_connectivity& subdivided) {
     // Basic sanity checks
     if (!subdivided.check_sanity_slowly(false)) return false;
