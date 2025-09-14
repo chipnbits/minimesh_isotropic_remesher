@@ -128,7 +128,14 @@ void clear();
 ```cpp
 int get_halfedge_between_vertices(int v0, int v1);  // Returns half-edge from v0 to v1
 bool flip_edge(int he_index);                       // Flip edge (triangular meshes only)
+bool subdivide_loop();                               // Loop subdivision (placeholder)
 ```
+
+## Mesh Analysis Utilities
+
+**Location**: `mesh_analysis.hpp` in `src/minimesh/core/mohe/`
+
+Contains functional utilities for analyzing mesh properties and making assertions about mesh structure. These functions are useful for debugging, testing, and validation throughout the codebase. Functions include topology checks, connectivity analysis, geometric measurements, and validation routines.
 
 ## Common Traversal Patterns
 
