@@ -8,7 +8,7 @@ CompileFlags:
 Diagnostics:
   ClangTidy:
     Add:
-      - bugprone-*
+      # - bugprone-*
       - performance-*
     Remove:
       - readability-static-definition-in-anonymous-namespace
@@ -21,8 +21,13 @@ Diagnostics:
       - cppcoreguidelines-*
       - google-*
       - hicpp-*
+    # Only show errors, hide warnings
+    Severity:
+      ClangTidy: Error
+      Compiler: Error
 
 InlayHints:
   Enabled: true
   ParameterNames: true
   DeducedTypes: true
+
