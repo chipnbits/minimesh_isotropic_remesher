@@ -31,7 +31,7 @@ namespace  // Mark the start of anonymous namespace (cant be called from outside
 void
 write_example_mesh()
 {
-  FILE *fl = fopen("example_mesh.obj", "w");
+  FILE *fl = fopen("exports/example_mesh.obj", "w");
 
   //
   //
@@ -88,36 +88,55 @@ int main(int argc, char **argv)
 
   // Now read the example mesh
   printf("reading example_mesh.obj \n");
-  io.read_obj_general("example_mesh.obj");
+  io.read_obj_general("exports/example_mesh.obj");
 
   // A lambda for checking the mesh sanity and writing it
-  int writing_index = 0;
-  auto check_sanity_and_write_mesh = [&io, &mesh, &writing_index]()
-  {
-    force_assert( mesh.check_sanity_slowly() );
+  int write_count = 0;
+  auto check_sanity_and_write_mesh = [&io, &mesh, &write_count](const std::string &label = "mesh") {
+    force_assert(mesh.check_sanity_slowly());
 
-    printf("writing out_%d.vtk and out_%d.obj \n", writing_index, writing_index);
+    std::string base = "exports/" + label;
+    if (write_count > 0) base += "_" + std::to_string(write_count);
 
-    io.write_vtk( MINIMESH_STR("out_" << writing_index << ".vtk") );
-    io.write_obj( MINIMESH_STR("out_" << writing_index << ".obj") );
-    
-    ++writing_index;
+    printf("writing %s.vtk and %s.obj\n", base.c_str(), base.c_str());
+    io.write_obj(base + ".obj");
+
+    ++write_count;
   };
 
   // Now check that the mesh is sane and write it  in both 
   // .vtk and .obj formats
   check_sanity_and_write_mesh();
 
-  // Flip the edge between vertices 4 and 5 (the diagonal from lower right to upper left)
-  // Note that the indices should become 0-index based rather than 1-index based.
-  printf("flipping edge \n");
-  modi.flip_edge( modi.get_halfedge_between_vertices(4-1, 5-1) );
-  check_sanity_and_write_mesh();
+  // Test edge division functionality
+  printf("dividing edge between vertices 1 and 2 at midpoint...\n");
+  int he_to_divide = modi.get_halfedge_between_vertices(1-1, 2-1);
+  if (he_to_divide >= 0) {
+    bool success = modi.divide_edge(he_to_divide, 0.5);
+    if (success) {
+      printf("Edge division successful!\n");
+      check_sanity_and_write_mesh("div12");
+    } else {
+      printf("Edge division failed!\n");
+    }
+  } else {
+    printf("Could not find edge between vertices 1 and 2\n");
+  }
 
-  // Now flip back the edge again
-  printf("flipping edge again ...\n");
-  modi.flip_edge( modi.get_halfedge_between_vertices(2-1, 7-1) );
-  check_sanity_and_write_mesh();
+  // Test weighted edge division
+  printf("dividing edge between vertices 2 and 3 at 1/3 point...\n");
+  int he_to_divide_weighted = modi.get_halfedge_between_vertices(2-1, 3-1);
+  if (he_to_divide_weighted >= 0) {
+    bool success = modi.divide_edge(he_to_divide_weighted, 0.33);
+    if (success) {
+      printf("Weighted edge division successful!\n");
+      check_sanity_and_write_mesh("div23_weighted");
+    } else {
+      printf("Weighted edge division failed!\n");
+    }
+  } else {
+    printf("Could not find edge between vertices 2 and 3\n");
+  }
 
   return 0;
 } // end of main()

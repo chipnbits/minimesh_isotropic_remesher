@@ -46,11 +46,14 @@ public:
 	//
 	bool flip_edge(const int he_index);
 
-	// Subdivide all triangles in the mesh using Loop subdivision.
-	// Note that this method modifies the mesh in place.
-	// The input mesh must be a triangular mesh.
-	// The method returns true if the operation was successful, and false otherwise.
-	bool subdivide_loop(); 
+	// Subdivide an edge by adding a vertex at weighted position between endpoints
+	bool divide_edge(const int he_index, const double weight = 0.5);
+
+	// Loop subdivision (placeholder implementation)
+	bool subdivide_loop();
+
+	// Divide all edges in the mesh, tracking visited half-edges to avoid duplicates
+	bool divide_all_edges(const double weight = 0.5);
 
 
 private:

@@ -59,53 +59,153 @@ TEST_CASE("Subdivision basic setup") {
     INFO("Original mesh loaded successfully for subdivision testing");
 }
 
-TEST_CASE("Triangle subdivision test") {
+TEST_CASE("Triangle edge division test") {
     mohecore::Mesh_connectivity mesh;
     mohecore::Mesh_modifier modifier(mesh);
 
-    // Create a simple triangle mesh programmatically for testing
-    // TODO: Implement triangle creation or load a simple triangle mesh
+    // Create a simple triangle mesh programmatically
+    std::vector<double> xyz = {
+        0.0, 0.0, 0.0,  // vertex 0
+        1.0, 0.0, 0.0,  // vertex 1
+        0.5, 1.0, 0.0   // vertex 2
+    };
+    std::vector<int> triangle_verts = {0, 1, 2};
 
-    WARN("Triangle subdivision test not implemented yet");
-    // Placeholder test that passes
-    CHECK(true);
+    mesh.build_from_triangles(xyz, triangle_verts);
+
+    // Verify initial mesh is valid
+    REQUIRE(mesh.check_sanity_slowly(false));
+    REQUIRE(mesh.n_active_vertices() == 3);
+    REQUIRE(mesh.n_active_faces() == 1);
+    REQUIRE(mesh.n_active_half_edges() == 6); // 3 edges * 2 half-edges each
+
+    // Get a half-edge on the triangle to divide
+    auto face = mesh.face_at(0);
+    auto he_to_divide = face.half_edge();
+    int he_index = he_to_divide.index();
+
+    // Store original vertex positions for validation
+    auto origin_pos = he_to_divide.origin().xyz();
+    auto dest_pos = he_to_divide.dest().xyz();
+
+    // Divide the edge at midpoint (default weight = 0.5)
+    bool success = modifier.divide_edge(he_index);
+    REQUIRE(success);
+
+    // Verify mesh is still valid after division
+    CHECK(mesh.check_sanity_slowly(false));
+
+    // Check that we have one more vertex
+    CHECK(mesh.n_active_vertices() == 4);
+
+    // Check that we have two more half-edges (edge was split into two)
+    CHECK(mesh.n_active_half_edges() == 8);
+
+    // Find the new vertex and verify its position
+    bool found_new_vertex = false;
+    Eigen::Vector3d expected_midpoint = (origin_pos + dest_pos) * 0.5;
+
+    for (int v = 0; v < mesh.n_total_vertices(); ++v) {
+        auto vertex = mesh.vertex_at(v);
+        if (vertex.is_active()) {
+            Eigen::Vector3d pos = vertex.xyz();
+            if ((pos - expected_midpoint).norm() < 1e-10) {
+                found_new_vertex = true;
+                break;
+            }
+        }
+    }
+
+    CHECK(found_new_vertex);
 }
 
-TEST_CASE("Quad subdivision test") {
+TEST_CASE("Weighted edge division test") {
     mohecore::Mesh_connectivity mesh;
     mohecore::Mesh_modifier modifier(mesh);
 
-    // TODO: Test subdivision on quad-based meshes
+    // Create a simple triangle mesh
+    std::vector<double> xyz = {
+        0.0, 0.0, 0.0,  // vertex 0
+        2.0, 0.0, 0.0,  // vertex 1
+        1.0, 2.0, 0.0   // vertex 2
+    };
+    std::vector<int> triangle_verts = {0, 1, 2};
 
-    WARN("Quad subdivision test not implemented yet");
-    // Placeholder test that passes
-    CHECK(true);
+    mesh.build_from_triangles(xyz, triangle_verts);
+    REQUIRE(mesh.check_sanity_slowly(false));
+
+    // Get a half-edge to divide
+    auto face = mesh.face_at(0);
+    auto he_to_divide = face.half_edge();
+    int he_index = he_to_divide.index();
+
+    auto origin_pos = he_to_divide.origin().xyz();
+    auto dest_pos = he_to_divide.dest().xyz();
+
+    // Divide edge with weight 0.25 (closer to origin)
+    bool success = modifier.divide_edge(he_index, 0.25);
+    REQUIRE(success);
+
+    // Verify mesh is still valid
+    CHECK(mesh.check_sanity_slowly(false));
+    CHECK(mesh.n_active_vertices() == 4);
+
+    // Find the new vertex and verify its weighted position
+    bool found_weighted_vertex = false;
+    Eigen::Vector3d expected_pos = 0.25 * origin_pos + 0.75 * dest_pos;
+
+    for (int v = 0; v < mesh.n_total_vertices(); ++v) {
+        auto vertex = mesh.vertex_at(v);
+        if (vertex.is_active()) {
+            Eigen::Vector3d pos = vertex.xyz();
+            if ((pos - expected_pos).norm() < 1e-10) {
+                found_weighted_vertex = true;
+                break;
+            }
+        }
+    }
+
+    CHECK(found_weighted_vertex);
 }
 
-TEST_CASE("Subdivision edge cases") {
+TEST_CASE("Edge division edge cases") {
     mohecore::Mesh_connectivity mesh;
     mohecore::Mesh_modifier modifier(mesh);
 
-    // TODO: Test subdivision on edge cases like:
-    // - Single triangle
-    // - Non-manifold geometry
-    // - Meshes with boundaries
+    // Create a simple triangle mesh
+    std::vector<double> xyz = {
+        0.0, 0.0, 0.0,  // vertex 0
+        1.0, 0.0, 0.0,  // vertex 1
+        0.5, 1.0, 0.0   // vertex 2
+    };
+    std::vector<int> triangle_verts = {0, 1, 2};
 
-    WARN("Subdivision edge cases test not implemented yet");
-    // Placeholder test that passes
-    CHECK(true);
-}
+    mesh.build_from_triangles(xyz, triangle_verts);
+    REQUIRE(mesh.check_sanity_slowly(false));
 
-TEST_CASE("Subdivision preserves topology") {
-    mohecore::Mesh_connectivity mesh;
-    REQUIRE(load_test_mesh(mesh, "mesh/cube.obj"));
+    auto face = mesh.face_at(0);
+    auto he_to_divide = face.half_edge();
+    int he_index = he_to_divide.index();
 
-    // TODO: Verify that subdivision preserves topological properties
-    // - Genus should remain the same
-    // - No holes should be introduced
-    // - Mesh should remain manifold
+    // Test edge cases for weight parameter
+    SUBCASE("Weight = 0.0 (at destination)") {
+        bool success = modifier.divide_edge(he_index, 0.0);
+        REQUIRE(success);
+        CHECK(mesh.check_sanity_slowly(false));
+        CHECK(mesh.n_active_vertices() == 4);
+    }
 
-    WARN("Subdivision topology preservation test not implemented yet");
-    // Placeholder test that passes
-    CHECK(true);
+    SUBCASE("Weight = 1.0 (at origin)") {
+        bool success = modifier.divide_edge(he_index, 1.0);
+        REQUIRE(success);
+        CHECK(mesh.check_sanity_slowly(false));
+        CHECK(mesh.n_active_vertices() == 4);
+    }
+
+    SUBCASE("Invalid half-edge index") {
+        bool success = modifier.divide_edge(-1);
+        CHECK_FALSE(success);
+        // Mesh should remain unchanged
+        CHECK(mesh.n_active_vertices() == 3);
+    }
 }

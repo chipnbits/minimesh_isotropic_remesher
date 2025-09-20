@@ -1,5 +1,6 @@
 #include <minimesh/core/mohe/mesh_modifier.hpp>
 #include <minimesh/core/util/assert.hpp>
+#include <minimesh/core/mohe/mesh_analysis.hpp>
 #include <queue>
 
 namespace minimesh
@@ -42,7 +43,6 @@ int Mesh_modifier::get_halfedge_between_vertices(const int v0, const int v1)
 
 	return answer;
 }
-
 
 bool Mesh_modifier::flip_edge(const int he_index)
 {
@@ -115,6 +115,87 @@ bool Mesh_modifier::flip_edge(const int he_index)
 	// operation successful
 	return true;
 } // All done
+
+bool Mesh_modifier::divide_edge(const int he_index, const double weight)
+{
+	// Validate input index
+	if (he_index < 0 || he_index >= mesh().n_total_half_edges()) return false;
+
+	// Get the half-edge and its twin
+	auto he = mesh().half_edge_at(he_index);
+	if (!he.is_active()) return false;
+
+	auto twin = he.twin();
+	if (!twin.is_active()) return false;
+
+	// Get the two vertices of the edge
+	auto origin_vertex = he.origin();
+	auto dest_vertex = twin.origin();  // Twin's origin is he's destination
+
+	// Compute weighted position: weight * origin + (1-weight) * dest
+	Eigen::Vector3d new_pos = weight * origin_vertex.xyz() + (1.0 - weight) * dest_vertex.xyz();
+
+	// Create new vertex at weighted position
+	auto new_vertex = mesh().add_vertex();
+	new_vertex.data().xyz = new_pos;
+
+	// Create two new half-edges to split the original edge
+	auto new_he = mesh().add_half_edge();
+	auto new_twin = mesh().add_half_edge();
+
+	// Store original connectivity info before modification
+	int he_next = he.data().next;
+	int he_face = he.data().face;
+
+	int twin_next = twin.data().next;
+	int twin_face = twin.data().face;
+
+	// Update original half-edge: now goes from origin to new vertex
+	he.data().next = new_he.index();
+	// prev stays the same
+	// face stays the same
+	// origin stays the same
+	he.data().twin = new_twin.index();
+
+	// Update new half-edge: goes from new vertex to destination
+	new_he.data().next = he_next;
+	new_he.data().prev = he.index();
+	new_he.data().twin = twin.index();
+	new_he.data().face = he_face;
+	new_he.data().origin = new_vertex.index();
+
+	// Update original twin: now goes from dest to new vertex
+	twin.data().next = new_twin.index();
+	// prev stays the same
+	// face stays the same
+	// origin stays the same (dest_vertex)
+	twin.data().twin = new_he.index();
+
+	// Update new twin: goes from new vertex to origin
+	new_twin.data().next = twin_next;
+	new_twin.data().prev = twin.index();
+	new_twin.data().twin = he.index();
+	new_twin.data().face = twin_face;
+	new_twin.data().origin = new_vertex.index();
+
+	// Update next/prev pointers of adjacent half-edges
+	auto new_he_next_idx = new_he.data().next;
+	if (new_he_next_idx != mesh().invalid_index) {
+		new_he.next().data().prev = new_he.index();
+	}
+	auto new_twin_next_idx = new_twin.data().next;
+	if (new_twin_next_idx != mesh().invalid_index) {
+		mesh().half_edge_at(new_twin_next_idx).data().prev = new_twin.index();
+	}
+
+	// Update vertex half-edge pointers
+	new_vertex.data().half_edge = new_he.index();
+
+	// Origin and dest vertices retained the same half-edge pointers
+	// Face retained the same half-edge pointers
+
+	return true;
+}
 
 bool Mesh_modifier::subdivide_loop()
 {

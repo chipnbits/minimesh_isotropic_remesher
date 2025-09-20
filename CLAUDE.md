@@ -1,6 +1,6 @@
 # Minimesh Half-Edge Data Structure Reference
 
-This document provides a concise reference for the half-edge mesh data structure used in the minimesh library for mesh traversal and modification operations. Other details helpful for context are found in `minimesh_extension_guide.md`.
+This document provides a concise reference for the half-edge mesh data structure used in the minimesh library for mesh traversal and modification operations. Other details helpful for context are found in `minimesh_extension_guide.md`. The cli can be run directly with the meshcli command that has been sourced into terminal. The GUI likewise can be run with the meshgui command and filepath argument.
 
 ## Core Data Structures
 
@@ -128,6 +128,7 @@ void clear();
 ```cpp
 int get_halfedge_between_vertices(int v0, int v1);  // Returns half-edge from v0 to v1
 bool flip_edge(int he_index);                       // Flip edge (triangular meshes only)
+bool divide_edge(int he_index, double weight = 0.5); // Subdivide edge with weighted vertex placement
 bool subdivide_loop();                               // Loop subdivision (placeholder)
 ```
 
