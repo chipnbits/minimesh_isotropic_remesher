@@ -5,7 +5,7 @@
   "cmake.defaultConfigurePreset": "debug",
   "cmake.defaultBuildPreset": "debug",
   "cmake.buildBeforeRun": true,
-  "cmake.defaultBuildTarget": "minimeshgui",
+  "cmake.defaultBuildTarget": "minimeshcli",
   "cmake.runConfig":  { "args": ["${workspaceFolder}/mesh/cube.obj"], "cwd": "${workspaceFolder}" },
   "cmake.debugConfig":{ "args": ["${workspaceFolder}/mesh/cube.obj"], "cwd": "${workspaceFolder}" },
   "cmake.copyCompileCommands": "${workspaceFolder}/compile_commands.json",
@@ -15,6 +15,19 @@
   "C_Cpp.intelliSenseEngine": "disabled",
   "C_Cpp.clang_format_style": "file",
   "C_Cpp.clang_format_fallbackStyle": "Google",
+
+  // --- Enable CodeLens for debugging buttons ---
+  "C_Cpp.codeAnalysis.runAutomatically": true,
+  "C_Cpp.debugShortcut": true,
+  "editor.codeLens": true,
+  "cmake.showSystemKits": false,
+  "cmake.pinnedCommands": [
+    "workbench.action.tasks.runTask",
+    "cmake.build",
+    "cmake.buildTarget",
+    "cmake.run",
+    "cmake.debug"
+  ],
 
   // --- Hide/unhide files in Explorer ---
   "files.exclude": {

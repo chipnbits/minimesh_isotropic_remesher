@@ -5,17 +5,40 @@
 {
   "version": "0.2.0",
   "configurations": [
-    
+
     {
-      "name": "CMake: Debug active target",
+      "name": "Debug Current File Context",
       "type": "cppdbg",
       "request": "launch",
       "MIMode": "gdb",
-      // Always run the target chosen in CMake's status bar:
-      "program": "${workspaceFolder}/build-dbg/src/minimesh/",
-      // Work in the repo root so mesh paths are stable:
+      "program": "${input:selectProgram}",
       "cwd": "${workspaceFolder}",
-      // Default mesh arg:
+      "args": ["${workspaceFolder}/mesh/cube.obj"],
+      "setupCommands": [
+        { "description": "Enable pretty-printing for gdb", "text": "-enable-pretty-printing", "ignoreFailures": true }
+      ],
+      "externalConsole": false
+    },
+    {
+      "name": "Debug GUI",
+      "type": "cppdbg",
+      "request": "launch",
+      "MIMode": "gdb",
+      "program": "${workspaceFolder}/build-dbg/bin/minimeshgui",
+      "cwd": "${workspaceFolder}",
+      "args": ["${workspaceFolder}/mesh/cube.obj"],
+      "setupCommands": [
+        { "description": "Enable pretty-printing for gdb", "text": "-enable-pretty-printing", "ignoreFailures": true }
+      ],
+      "externalConsole": false
+    },
+    {
+      "name": "Debug CLI",
+      "type": "cppdbg",
+      "request": "launch",
+      "MIMode": "gdb",
+      "program": "${workspaceFolder}/build-dbg/bin/minimeshcli",
+      "cwd": "${workspaceFolder}",
       "args": ["${workspaceFolder}/mesh/cube.obj"],
       "setupCommands": [
         { "description": "Enable pretty-printing for gdb", "text": "-enable-pretty-printing", "ignoreFailures": true }
@@ -34,6 +57,27 @@
         { "description": "Enable pretty-printing for gdb", "text": "-enable-pretty-printing", "ignoreFailures": true }
       ],
       "externalConsole": false
+    }
+  ],
+  "inputs": [
+    {
+      "id": "selectProgram",
+      "description": "Select program to debug",
+      "type": "pickString",
+      "options": [
+        {
+          "label": "CLI (minimeshcli)",
+          "value": "${workspaceFolder}/build-dbg/bin/minimeshcli"
+        },
+        {
+          "label": "GUI (minimeshgui)",
+          "value": "${workspaceFolder}/build-dbg/bin/minimeshgui"
+        },
+        {
+          "label": "Tests (minimesh_tests)",
+          "value": "${workspaceFolder}/build-dbg/src/minimesh/test/minimesh_tests"
+        }
+      ]
     }
   ]
 }

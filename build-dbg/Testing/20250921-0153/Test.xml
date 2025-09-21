@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Site BuildName="Linux-c++"
+	BuildStamp="20250921-0153-Experimental"
+	Name="SimonG14"
+	Generator="ctest-4.1.1"
+	CompilerName="/usr/bin/c++"
+	CompilerVersion="11.4.0"
+	OSName="Linux"
+	Hostname="SimonG14"
+	OSRelease="6.6.87.2-microsoft-standard-WSL2"
+	OSVersion="#1 SMP PREEMPT_DYNAMIC Thu Jun  5 18:30:46 UTC 2025"
+	OSPlatform="x86_64"
+	Is64Bits="1"
+	VendorString="AuthenticAMD"
+	VendorID="Advanced Micro Devices"
+	FamilyID="25"
+	ModelID="117"
+	ModelName="AMD Ryzen 9 8945HS w/ Radeon 780M Graphics"
+	ProcessorCacheSize="1024"
+	NumberOfLogicalCPU="16"
+	NumberOfPhysicalCPU="8"
+	TotalVirtualMemory="2048"
+	TotalPhysicalMemory="7582"
+	LogicalProcessorsPerPhysical="2"
+	ProcessorClockFrequency="3992.22"
+	>
+	<Testing>
+		<StartDateTime>Sep 20 19:07 PDT</StartDateTime>
+		<StartTestTime>1758420455</StartTestTime>
+		<TestList/>
+		<EndDateTime>Sep 20 19:07 PDT</EndDateTime>
+		<EndTestTime>1758420455</EndTestTime>
+		<ElapsedMinutes>0</ElapsedMinutes>
+	</Testing>
+</Site>

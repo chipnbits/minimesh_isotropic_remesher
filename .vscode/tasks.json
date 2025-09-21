@@ -2,6 +2,14 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Configure and Build (Debug)",
+      "type": "shell",
+      "command": "cmake --preset debug && cmake --build --preset debug -j6",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    },
+    {
       "label": "Build (Debug, cmake CLI)",
       "type": "shell",
       "command": "cmake --build --preset debug -j6",

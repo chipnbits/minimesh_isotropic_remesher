@@ -1,0 +1,2 @@
+/usr/bin/ar qc libminimeshcore.a CMakeFiles/minimeshcore.dir/util/foldertools.cpp.o CMakeFiles/minimeshcore.dir/util/get_basefilename.cpp.o CMakeFiles/minimeshcore.dir/mohe/mesh_connectivity.cpp.o CMakeFiles/minimeshcore.dir/mohe/mesh_io.cpp.o CMakeFiles/minimeshcore.dir/mohe/mesh_modifier.cpp.o CMakeFiles/minimeshcore.dir/mohe/mesh_analysis.cpp.o
+/usr/bin/ranlib libminimeshcore.a

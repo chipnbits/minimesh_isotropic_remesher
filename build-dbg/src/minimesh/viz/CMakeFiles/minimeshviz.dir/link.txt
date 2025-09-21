@@ -1,0 +1,2 @@
+/usr/bin/ar qc libminimeshviz.a CMakeFiles/minimeshviz.dir/mesh_buffer.cpp.o CMakeFiles/minimeshviz.dir/mesh_viewer.cpp.o CMakeFiles/minimeshviz.dir/util/glui_slider.cpp.o
+/usr/bin/ranlib libminimeshviz.a
