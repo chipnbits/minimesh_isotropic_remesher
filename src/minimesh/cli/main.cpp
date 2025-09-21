@@ -8,8 +8,9 @@
 //
 
 #include <cstdio>
+#include <string>
 
-#include <minimesh/core/util/assert.hpp> 
+#include <minimesh/core/util/assert.hpp>
 #include <minimesh/core/util/macros.hpp>
 
 #include <minimesh/core/mohe/mesh_connectivity.hpp>
@@ -81,14 +82,22 @@ int main(int argc, char **argv)
 
   printf("=== MESH EDITTING EXAMPLE === \n");
 
-  // Write the example mesh, the mesh is written with the 
-  // name example_mesh.obj
-  printf("writing example_mesh.obj \n");
-  write_example_mesh();
+  // Check if filename provided as argument
+  std::string filename;
+  if (argc > 1) {
+    filename = argv[1];
+    printf("Processing file: %s\n", filename.c_str());
+  } else {
+    // Default behavior - write and use example mesh
+    printf("writing example_mesh.obj \n");
+    write_example_mesh();
+    filename = "./mesh/tetra.obj";
+    printf("No filename provided, using default: %s\n", filename.c_str());
+  }
 
-  // Now read the example mesh
-  printf("reading example_mesh.obj \n");
-  io.read_obj_general("exports/example_mesh.obj");
+  // Read the specified mesh file
+  printf("reading %s \n", filename.c_str());
+  io.read_obj_general(filename);
 
   // A lambda for checking the mesh sanity and writing it
   int write_count = 0;
@@ -100,8 +109,12 @@ int main(int argc, char **argv)
 
     printf("writing %s.vtk and %s.obj\n", base.c_str(), base.c_str());
     io.write_obj(base + ".obj");
+    io.write_vtk(base + ".vtk");
 
     ++write_count;
+
+    // return the filepath
+    return base + ".obj";
   };
 
   // Now check that the mesh is sane and write it  in both 
@@ -112,6 +125,5 @@ int main(int argc, char **argv)
   printf("dividing with subdivision\n");
   modi.subdivide_loop();
   check_sanity_and_write_mesh("subdivided_mesh");
-
   return 0;
 } // end of main()

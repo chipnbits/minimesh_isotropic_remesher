@@ -370,8 +370,6 @@ Mesh_modifier::subdivide_face(Mesh_connectivity::Face_iterator & face, const std
 
     // Advance to next outer triangle
     edge_start_12 = next_start;
-    printf(" next edge %d \n", next_start.index());
-    printf("comparing with %d \n", he0.index());
   } while(!(edge_start_12.index() == he0.index()));
 
   // We must have exactly 3 central edges

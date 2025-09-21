@@ -12,7 +12,7 @@
 
   // --- cpptools off for IntelliSense; keep for debugging ---
   "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
-  "C_Cpp.intelliSenseEngine": "disabled",
+  "C_Cpp.intelliSenseEngine": "enabled",
   "C_Cpp.clang_format_style": "file",
   "C_Cpp.clang_format_fallbackStyle": "Google",
 
@@ -46,12 +46,13 @@
 
   // --- Make config files open as JSON/JSONC; keep your C++ mappings below ---
   "files.associations": {
+    "*.json": "cpp",
+    "*.md": "markdown",
     "CMakePresets.json": "json",
     "CMakeUserPresets.json": "json",
     "launch.json": "jsonc",
     "tasks.json": "jsonc",
     "settings.json": "jsonc",
-
     "armadillo": "cpp",
     "*.ipp": "cpp",
     "*.tcc": "cpp",
@@ -120,6 +121,13 @@
     "set": "cpp",
     "string": "cpp",
     "iomanip": "cpp",
-    "cfenv": "cpp"
+    "cfenv": "cpp",
+    "bit": "cpp",
+    "compare": "cpp",
+    "concepts": "cpp",
+    "random": "cpp",
+    "numbers": "cpp",
+    "semaphore": "cpp",
+    "stop_token": "cpp"
   },
 }
