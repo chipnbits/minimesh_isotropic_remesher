@@ -7,6 +7,11 @@
 
 #include <iostream>
 #include <string>
+#include <set>
+#include <map>
+#include <vector>
+#include <algorithm>
+#include <functional>
 
 using namespace minimesh;
 
@@ -310,4 +315,155 @@ TEST_CASE("Loop subdivision properties - simple triangle") {
     // - edges: Each original edge becomes 2 edges, plus 3 new interior edges per face
     // E_new = 2*3 + 3*1 = 9
     CHECK(E_new == 9);
+}
+
+// Helper functions for mesh comparison
+namespace {
+    bool compare_vertices(mohecore::Mesh_connectivity& mesh1,
+                         mohecore::Mesh_connectivity& mesh2,
+                         double tolerance = 1e-10) {
+        if (mesh1.n_active_vertices() != mesh2.n_active_vertices()) {
+            return false;
+        }
+
+        // Create ordered lists of vertex positions for comparison
+        std::vector<Eigen::Vector3d> positions1, positions2;
+
+        for (int v = 0; v < mesh1.n_total_vertices(); ++v) {
+            auto vertex = mesh1.vertex_at(v);
+            if (vertex.is_active()) {
+                positions1.push_back(vertex.xyz());
+            }
+        }
+
+        for (int v = 0; v < mesh2.n_total_vertices(); ++v) {
+            auto vertex = mesh2.vertex_at(v);
+            if (vertex.is_active()) {
+                positions2.push_back(vertex.xyz());
+            }
+        }
+
+        if (positions1.size() != positions2.size()) {
+            return false;
+        }
+
+        // Sort both lists by coordinates for consistent comparison
+        auto comparator = [](const Eigen::Vector3d& a, const Eigen::Vector3d& b) {
+            if (std::abs(a.x() - b.x()) > 1e-12) return a.x() < b.x();
+            if (std::abs(a.y() - b.y()) > 1e-12) return a.y() < b.y();
+            return a.z() < b.z();
+        };
+
+        std::sort(positions1.begin(), positions1.end(), comparator);
+        std::sort(positions2.begin(), positions2.end(), comparator);
+
+        // Compare corresponding positions
+        for (size_t i = 0; i < positions1.size(); ++i) {
+            if ((positions1[i] - positions2[i]).norm() > tolerance) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    bool compare_topology(mohecore::Mesh_connectivity& mesh1,
+                         mohecore::Mesh_connectivity& mesh2) {
+        // Basic counts must match
+        if (mesh1.n_active_vertices() != mesh2.n_active_vertices() ||
+            mesh1.n_active_faces() != mesh2.n_active_faces() ||
+            mesh1.n_active_half_edges() != mesh2.n_active_half_edges()) {
+            return false;
+        }
+
+        // For a simpler topology check, verify that each vertex has the same valence
+        // and that the face count and edge count relationships hold
+
+        // Create sorted lists of vertex valences for comparison
+        std::vector<int> valences1, valences2;
+
+        for (int v = 0; v < mesh1.n_total_vertices(); ++v) {
+            auto vertex = mesh1.vertex_at(v);
+            if (!vertex.is_active()) continue;
+
+            int valence = 0;
+            auto ring = mesh1.vertex_ring_at(v);
+            do {
+                valence++;
+            } while (ring.advance());
+            valences1.push_back(valence);
+        }
+
+        for (int v = 0; v < mesh2.n_total_vertices(); ++v) {
+            auto vertex = mesh2.vertex_at(v);
+            if (!vertex.is_active()) continue;
+
+            int valence = 0;
+            auto ring = mesh2.vertex_ring_at(v);
+            do {
+                valence++;
+            } while (ring.advance());
+            valences2.push_back(valence);
+        }
+
+        std::sort(valences1.begin(), valences1.end());
+        std::sort(valences2.begin(), valences2.end());
+
+        return valences1 == valences2;
+    }
+}
+
+TEST_CASE("Loop subdivision regression test - camel mesh") {
+    mohecore::Mesh_connectivity original_mesh;
+    mohecore::Mesh_connectivity reference_mesh;
+
+    // Load the original camel mesh
+    REQUIRE(load_test_mesh(original_mesh, "mesh/camel_simple.obj"));
+
+    // Load the reference subdivided mesh
+    REQUIRE(load_test_mesh(reference_mesh, "mesh/camel_loop.obj"));
+
+    INFO("Loaded original mesh with " << original_mesh.n_active_vertices() << " vertices, "
+         << original_mesh.n_active_faces() << " faces");
+    INFO("Loaded reference mesh with " << reference_mesh.n_active_vertices() << " vertices, "
+         << reference_mesh.n_active_faces() << " faces");
+
+    // Apply Loop subdivision to the original mesh
+    mohecore::Mesh_modifier modifier(original_mesh);
+    bool success = modifier.subdivide_loop();
+    REQUIRE(success);
+
+    // Verify mesh is still valid after subdivision
+    CHECK(original_mesh.check_sanity_slowly(false));
+
+    INFO("After subdivision: " << original_mesh.n_active_vertices() << " vertices, "
+         << original_mesh.n_active_faces() << " faces");
+
+    SUBCASE("Topology comparison") {
+        // Check that both meshes have the same topology (adjacency structure)
+        bool topology_matches = compare_topology(original_mesh, reference_mesh);
+        CHECK(topology_matches);
+
+        if (!topology_matches) {
+            std::cerr << "Topology mismatch detected!" << std::endl;
+            std::cerr << "Original subdivided: V=" << original_mesh.n_active_vertices()
+                     << " F=" << original_mesh.n_active_faces()
+                     << " E=" << original_mesh.n_active_half_edges() / 2 << std::endl;
+            std::cerr << "Reference mesh: V=" << reference_mesh.n_active_vertices()
+                     << " F=" << reference_mesh.n_active_faces()
+                     << " E=" << reference_mesh.n_active_half_edges() / 2 << std::endl;
+        }
+    }
+
+    SUBCASE("Geometry comparison") {
+        // Check that both meshes have the same vertex positions (point cloud)
+        bool geometry_matches = compare_vertices(original_mesh, reference_mesh, 1e-6);
+        CHECK(geometry_matches);
+
+        if (!geometry_matches) {
+            std::cerr << "Geometry mismatch detected!" << std::endl;
+            std::cerr << "Vertex count - Original: " << original_mesh.n_active_vertices()
+                     << " Reference: " << reference_mesh.n_active_vertices() << std::endl;
+        }
+    }
 }

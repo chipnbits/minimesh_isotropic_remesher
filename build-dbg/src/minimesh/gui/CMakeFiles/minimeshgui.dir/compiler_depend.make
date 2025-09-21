@@ -4,6 +4,7 @@
 src/minimesh/gui/CMakeFiles/minimeshgui.dir/main.cpp.o: /home/sghys/projects/CPSC524-modeling/src/minimesh/gui/main.cpp \
   /home/sghys/projects/CPSC524-modeling/src/minimesh/core/mohe/mesh_connectivity.hpp \
   /home/sghys/projects/CPSC524-modeling/src/minimesh/core/mohe/mesh_io.hpp \
+  /home/sghys/projects/CPSC524-modeling/src/minimesh/core/mohe/mesh_modifier.hpp \
   /home/sghys/projects/CPSC524-modeling/src/minimesh/core/util/assert.hpp \
   /home/sghys/projects/CPSC524-modeling/src/minimesh/core/util/console_colors.hpp \
   /home/sghys/projects/CPSC524-modeling/src/minimesh/core/util/foldertools.hpp \
@@ -628,6 +629,8 @@ src/minimesh/gui/CMakeFiles/minimeshgui.dir/main.cpp.o: /home/sghys/projects/CPS
 
 /usr/include/c++/11/bits/unique_ptr.h:
 
+/usr/include/c++/11/bits/stringfwd.h:
+
 /home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Cholesky/LLT.h:
 
 /home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/products/SelfadjointMatrixVector.h:
@@ -720,8 +723,6 @@ src/minimesh/gui/CMakeFiles/minimeshgui.dir/main.cpp.o: /home/sghys/projects/CPS
 
 /usr/include/c++/11/bits/locale_classes.tcc:
 
-/home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/SolveTriangular.h:
-
 /usr/include/x86_64-linux-gnu/c++/11/bits/c++allocator.h:
 
 /home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/Stride.h:
@@ -768,33 +769,35 @@ src/minimesh/gui/CMakeFiles/minimeshgui.dir/main.cpp.o: /home/sghys/projects/CPS
 
 /home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/PartialReduxEvaluator.h:
 
-/home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/LU:
-
-/usr/include/x86_64-linux-gnu/bits/types/sigset_t.h:
-
-/usr/include/c++/11/bits/concept_check.h:
-
 /home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/util/BlasUtil.h:
 
 /home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/plugins/MatrixCwiseBinaryOps.h:
 
 /home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/Cholesky:
 
-/home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/BandMatrix.h:
+/home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/LU:
+
+/usr/include/x86_64-linux-gnu/bits/types/sigset_t.h:
+
+/usr/include/c++/11/bits/concept_check.h:
 
 /home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/GenericPacketMath.h:
 
-/usr/include/x86_64-linux-gnu/c++/11/bits/ctype_base.h:
+/home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/MatrixBase.h:
 
-/home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/util/ReshapedHelper.h:
+/home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/CommaInitializer.h:
+
+/home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/Select.h:
 
 /usr/include/x86_64-linux-gnu/bits/errno.h:
 
 /home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Cholesky/LDLT.h:
 
-/home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/plugins/CommonCwiseBinaryOps.h:
+/usr/include/x86_64-linux-gnu/c++/11/bits/ctype_base.h:
 
-/home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/Select.h:
+/home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/util/ReshapedHelper.h:
+
+/home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/plugins/CommonCwiseBinaryOps.h:
 
 /home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/products/GeneralMatrixMatrix.h:
 
@@ -840,6 +843,16 @@ src/minimesh/gui/CMakeFiles/minimeshgui.dir/main.cpp.o: /home/sghys/projects/CPS
 
 /home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/MapBase.h:
 
+/home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/BandMatrix.h:
+
+/home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/SolveTriangular.h:
+
+/home/sghys/projects/CPSC524-modeling/src/minimesh/core/mohe/mesh_modifier.hpp:
+
+/home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/DenseCoeffsBase.h:
+
+/home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/Array.h:
+
 /home/sghys/projects/CPSC524-modeling/src/minimesh/core/util/console_colors.hpp:
 
 /home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/Core:
@@ -865,10 +878,6 @@ src/minimesh/gui/CMakeFiles/minimeshgui.dir/main.cpp.o: /home/sghys/projects/CPS
 /usr/include/x86_64-linux-gnu/gnu/stubs-64.h:
 
 /home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/Transpositions.h:
-
-/home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/Array.h:
-
-/home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/DenseCoeffsBase.h:
 
 /usr/include/x86_64-linux-gnu/bits/types/time_t.h:
 
@@ -909,10 +918,6 @@ src/minimesh/gui/CMakeFiles/minimeshgui.dir/main.cpp.o: /home/sghys/projects/CPS
 /home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/CwiseNullaryOp.h:
 
 /home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/Solve.h:
-
-/home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/CommaInitializer.h:
-
-/home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/MatrixBase.h:
 
 /usr/include/x86_64-linux-gnu/bits/iscanonical.h:
 
@@ -1055,8 +1060,6 @@ src/minimesh/gui/CMakeFiles/minimeshgui.dir/main.cpp.o: /home/sghys/projects/CPS
 /usr/include/c++/11/bits/stl_function.h:
 
 /usr/include/c++/11/bits/memoryfwd.h:
-
-/usr/include/c++/11/bits/stringfwd.h:
 
 /usr/include/errno.h:
 

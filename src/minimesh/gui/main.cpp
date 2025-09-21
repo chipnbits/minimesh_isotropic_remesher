@@ -10,6 +10,7 @@
 
 // core
 #include <minimesh/core/mohe/mesh_connectivity.hpp>
+#include <minimesh/core/mohe/mesh_modifier.hpp>
 #include <minimesh/core/mohe/mesh_io.hpp>
 #include <minimesh/core/util/assert.hpp>
 #include <minimesh/core/util/foldertools.hpp>
@@ -149,6 +150,35 @@ void mouse_moved(int x, int y)
 void subdivide_pressed(int)
 {
 	printf("Subdivide button was pressed \n");
+
+	// Create a mesh modifier for the global mesh
+	mohecore::Mesh_modifier modifier(globalvars::mesh);
+
+	// Perform Loop subdivision (modifies mesh in-place)
+	bool success = modifier.subdivide_loop();
+
+	if(success)
+	{
+		printf("Loop subdivision completed successfully\n");
+
+		// Rebuild the viewer with the modified mesh
+		mohecore::Mesh_connectivity::Defragmentation_maps defrag;
+		globalvars::mesh.compute_defragmention_maps(defrag);
+		globalvars::viewer.get_mesh_buffer().rebuild(globalvars::mesh, defrag);
+
+		// Reset displaced positions to match new mesh
+		globalvars::displaced_vertex_positions.resize(3, globalvars::mesh.n_active_vertices());
+		for(int i = 0; i < globalvars::mesh.n_active_vertices(); ++i)
+		{
+			globalvars::displaced_vertex_positions.col(i) = globalvars::mesh.vertex_at(i).xyz();
+		}
+
+		glutPostRedisplay();
+	}
+	else
+	{
+		printf("Loop subdivision failed\n");
+	}
 }
 
 

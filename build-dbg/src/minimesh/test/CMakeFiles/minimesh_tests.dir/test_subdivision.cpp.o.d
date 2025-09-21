@@ -314,4 +314,11 @@ src/minimesh/test/CMakeFiles/minimesh_tests.dir/test_subdivision.cpp.o: \
  /usr/include/c++/11/bits/vector.tcc \
  /home/sghys/projects/CPSC524-modeling/src/minimesh/core/mohe/mesh_io.hpp \
  /home/sghys/projects/CPSC524-modeling/src/minimesh/core/mohe/mesh_modifier.hpp \
- /usr/include/c++/11/iostream
+ /usr/include/c++/11/iostream /usr/include/c++/11/set \
+ /usr/include/c++/11/bits/stl_tree.h \
+ /usr/include/c++/11/ext/aligned_buffer.h \
+ /usr/include/c++/11/bits/stl_set.h \
+ /usr/include/c++/11/bits/stl_multiset.h \
+ /usr/include/c++/11/bits/erase_if.h /usr/include/c++/11/map \
+ /usr/include/c++/11/bits/stl_map.h \
+ /usr/include/c++/11/bits/stl_multimap.h

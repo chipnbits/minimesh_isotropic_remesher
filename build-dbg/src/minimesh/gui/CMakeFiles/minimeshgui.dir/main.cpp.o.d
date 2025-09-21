@@ -365,6 +365,7 @@ src/minimesh/gui/CMakeFiles/minimeshgui.dir/main.cpp.o: \
  /usr/include/c++/11/bits/stl_vector.h \
  /usr/include/c++/11/bits/stl_bvector.h \
  /usr/include/c++/11/bits/vector.tcc \
+ /home/sghys/projects/CPSC524-modeling/src/minimesh/core/mohe/mesh_modifier.hpp \
  /home/sghys/projects/CPSC524-modeling/src/minimesh/core/mohe/mesh_io.hpp \
  /home/sghys/projects/CPSC524-modeling/src/minimesh/core/util/assert.hpp \
  /home/sghys/projects/CPSC524-modeling/src/minimesh/core/util/console_colors.hpp \

@@ -942,6 +942,7 @@ src/minimesh/test/CMakeFiles/minimesh_tests.dir/test_subdivision.cpp.o: /home/sg
   /usr/include/c++/11/bits/cxxabi_forced.h \
   /usr/include/c++/11/bits/cxxabi_init_exception.h \
   /usr/include/c++/11/bits/deque.tcc \
+  /usr/include/c++/11/bits/erase_if.h \
   /usr/include/c++/11/bits/exception.h \
   /usr/include/c++/11/bits/exception_defines.h \
   /usr/include/c++/11/bits/exception_ptr.h \
@@ -979,10 +980,15 @@ src/minimesh/test/CMakeFiles/minimesh_tests.dir/test_subdivision.cpp.o: /home/sg
   /usr/include/c++/11/bits/stl_iterator.h \
   /usr/include/c++/11/bits/stl_iterator_base_funcs.h \
   /usr/include/c++/11/bits/stl_iterator_base_types.h \
+  /usr/include/c++/11/bits/stl_map.h \
+  /usr/include/c++/11/bits/stl_multimap.h \
+  /usr/include/c++/11/bits/stl_multiset.h \
   /usr/include/c++/11/bits/stl_pair.h \
   /usr/include/c++/11/bits/stl_relops.h \
+  /usr/include/c++/11/bits/stl_set.h \
   /usr/include/c++/11/bits/stl_stack.h \
   /usr/include/c++/11/bits/stl_tempbuf.h \
+  /usr/include/c++/11/bits/stl_tree.h \
   /usr/include/c++/11/bits/stl_uninitialized.h \
   /usr/include/c++/11/bits/stl_vector.h \
   /usr/include/c++/11/bits/streambuf.tcc \
@@ -1009,6 +1015,7 @@ src/minimesh/test/CMakeFiles/minimesh_tests.dir/test_subdivision.cpp.o: /home/sg
   /usr/include/c++/11/debug/debug.h \
   /usr/include/c++/11/deque \
   /usr/include/c++/11/exception \
+  /usr/include/c++/11/ext/aligned_buffer.h \
   /usr/include/c++/11/ext/alloc_traits.h \
   /usr/include/c++/11/ext/atomicity.h \
   /usr/include/c++/11/ext/new_allocator.h \
@@ -1022,8 +1029,10 @@ src/minimesh/test/CMakeFiles/minimesh_tests.dir/test_subdivision.cpp.o: /home/sg
   /usr/include/c++/11/iostream \
   /usr/include/c++/11/istream \
   /usr/include/c++/11/limits \
+  /usr/include/c++/11/map \
   /usr/include/c++/11/new \
   /usr/include/c++/11/ostream \
+  /usr/include/c++/11/set \
   /usr/include/c++/11/sstream \
   /usr/include/c++/11/stack \
   /usr/include/c++/11/stdexcept \

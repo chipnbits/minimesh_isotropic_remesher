@@ -127,7 +127,7 @@ int main(int argc, char **argv)
   printf("Total faces: %d \n", mesh.n_active_faces());
   printf("Total half-edges: %d \n", mesh.n_active_half_edges());
   printf("dividing with subdivision\n");
-  modi.subdivide_loop();  modi.subdivide_loop();  modi.subdivide_loop();
+  modi.subdivide_loop();
   printf("Total vertices: %d \n", mesh.n_active_vertices());
   printf("Total faces: %d \n", mesh.n_active_faces());
   printf("Total half-edges: %d \n", mesh.n_active_half_edges());

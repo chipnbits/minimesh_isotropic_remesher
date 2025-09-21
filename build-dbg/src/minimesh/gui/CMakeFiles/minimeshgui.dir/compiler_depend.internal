@@ -5,6 +5,7 @@ src/minimesh/gui/CMakeFiles/minimeshgui.dir/main.cpp.o
  /home/sghys/projects/CPSC524-modeling/src/minimesh/gui/main.cpp
  /home/sghys/projects/CPSC524-modeling/src/minimesh/core/mohe/mesh_connectivity.hpp
  /home/sghys/projects/CPSC524-modeling/src/minimesh/core/mohe/mesh_io.hpp
+ /home/sghys/projects/CPSC524-modeling/src/minimesh/core/mohe/mesh_modifier.hpp
  /home/sghys/projects/CPSC524-modeling/src/minimesh/core/util/assert.hpp
  /home/sghys/projects/CPSC524-modeling/src/minimesh/core/util/console_colors.hpp
  /home/sghys/projects/CPSC524-modeling/src/minimesh/core/util/foldertools.hpp
