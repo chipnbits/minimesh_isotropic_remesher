@@ -12,6 +12,7 @@ namespace mohecore
 
 namespace
 {
+
 struct LoopEvenCoeffs
 {
   double center; // weight for the center vertex
@@ -24,27 +25,30 @@ struct LoopEvenCoeffs
 static const LoopEvenCoeffs &
 coeffs_for_valence(int n)
 {
-  static std::unordered_map<int, LoopEvenCoeffs> cache;
-  auto it = cache.find(n);
-  if(it != cache.end())
-    return it->second;
-
-  // Guard against degenerate valences
+  // Trivial fallback (also covers n<3)
   if(n < 3)
   {
     static const LoopEvenCoeffs kFallback{1.0, 0.0};
     return kFallback;
   }
 
-  const double c = std::cos(2.0 * M_PI / static_cast<double>(n));
-  const double beta = (40.0 - std::pow(3.0 + 2.0 * c, 2.0)) / (64.0 * static_cast<double>(n));
-  const double center = 1.0 - static_cast<double>(n) * beta;
+  static std::vector<LoopEvenCoeffs> cache(4, {1.0, 0.0}); // 0..3 prefilled
+  if((int)cache.size() <= n)
+    cache.resize(n + 1, {0.0, 0.0});
+  auto & c = cache[n];
 
-  LoopEvenCoeffs coeff{center, beta};
-
-  auto ins = cache.emplace(n, coeff);
-  return ins.first->second;
+  // If uninitialized, compute
+  if(c.center == 0.0 && c.neighbor == 0.0)
+  {
+    const double ang = 2.0 * M_PI / double(n);
+    const double t = 3.0 + 2.0 * std::cos(ang);
+    const double beta = (40.0 - t * t) / (64.0 * double(n)); // no pow
+    c.center = 1.0 - n * beta;
+    c.neighbor = beta;
+  }
+  return c;
 }
+
 } // namespace
 
 
@@ -254,7 +258,7 @@ Mesh_modifier::subdivide_loop()
   // 2. Create a copy of the original mesh connectivity for reference
   Mesh_connectivity original_mesh;
   original_mesh.copy(mesh());
-
+  
   // 3. Snapshot original faces and vertices, track visited edges and new vertices
   std::vector<int> original_active_face_ids;
   for(int f = 0; f < original_mesh.n_total_faces(); ++f)
@@ -285,6 +289,7 @@ Mesh_modifier::subdivide_loop()
   {
     auto face = original_mesh.face_at(f_id);
     std::vector<int> edge_midpoint_vertices;
+    edge_midpoint_vertices.reserve(3); // triangles
 
     // Iterate over the half-edges of the face to split edges and collect midpoints
     auto he_start = face.half_edge();
@@ -295,13 +300,9 @@ Mesh_modifier::subdivide_loop()
       int twin_idx = he.twin().index();
 
       // Check if edge has already been split
-      int new_midpoint;
-      if(edge_to_midpoint[he_idx] != original_mesh.invalid_index)
-      {
-        new_midpoint = edge_to_midpoint[he_idx];
-      }
-      else
-      {
+      int new_midpoint = edge_to_midpoint[he_idx];
+      if(new_midpoint == original_mesh.invalid_index)
+      {      
         // Edge has not been split, create a new midpoint
         new_midpoint = divide_edge(he_idx, 0.5);
         if(new_midpoint == mesh().invalid_index)
@@ -313,10 +314,21 @@ Mesh_modifier::subdivide_loop()
         // Update position of new vertex using Loop rules
         auto split_edge = original_mesh.half_edge_at(he_idx);
         auto twin_edge = split_edge.twin();
-        // Position new vertex using Loop subdivision rules for new vertices
-        Eigen::Vector3d new_pos =
-            0.375 * (split_edge.origin().xyz() + split_edge.dest().xyz())
-          + 0.125 * (split_edge.next().dest().xyz() + twin_edge.next().dest().xyz());
+        const bool is_boundary_edge =
+            split_edge.face().is_equal(original_mesh.hole()) || twin_edge.face().is_equal(original_mesh.hole());
+
+        Eigen::Vector3d new_pos;
+        if(is_boundary_edge)
+        {
+          // Boundary edge rule
+          new_pos = 0.5 * (split_edge.origin().xyz() + split_edge.dest().xyz());
+        }
+        else
+        {
+          // Interior new vertex rule
+          new_pos = 0.375 * (split_edge.origin().xyz() + split_edge.dest().xyz()) +
+                    0.125 * (split_edge.next().dest().xyz() + twin_edge.next().dest().xyz());
+        }
         mesh().vertex_at(new_midpoint).data().xyz = new_pos;
       }
       edge_midpoint_vertices.push_back(new_midpoint);
@@ -448,8 +460,25 @@ Mesh_modifier::loop_update_old_vertices(Mesh_connectivity & original_mesh,
   {
     // Get ring iterator
     Mesh_connectivity::Vertex_ring_iterator v_ring = original_mesh.vertex_ring_at(v_id);
+
+    // Check special boundary condition branch
+    if (v_ring.reset_boundary()) {
+      int n1 = v_ring.half_edge().origin().index();
+      v_ring.advance();
+      int n2 = v_ring.half_edge().origin().index();
+
+      const Eigen::Vector3d v = original_mesh.vertex_at(v_id).xyz();
+      const Eigen::Vector3d nsum =
+          original_mesh.vertex_at(n1).xyz() + original_mesh.vertex_at(n2).xyz();
+
+      mesh().vertex_at(v_id).data().xyz = 0.75 * v + 0.125 * nsum;
+      continue;
+    }
+
+    // Not a boundary vertex, proceed as normal
     // Grab all neighbors
     std::vector<int> neighbor_ids;
+    neighbor_ids.reserve(12); // preallocate space
     do
     {
       // Record the origins since half-edges point to v_id
@@ -460,26 +489,81 @@ Mesh_modifier::loop_update_old_vertices(Mesh_connectivity & original_mesh,
     int n = static_cast<int>(neighbor_ids.size());
     const LoopEvenCoeffs & coeffs = coeffs_for_valence(n);
 
-    // Get original vertex position
-    Eigen::Vector3d original_pos = original_mesh.vertex_at(v_id).xyz();
 
+    auto orig_v = original_mesh.vertex_at(v_id);
     // Compute weighted sum of neighbor positions
     Eigen::Vector3d neighbor_sum = Eigen::Vector3d::Zero();
-    for(int neighbor_id : neighbor_ids)
+    for(int nid : neighbor_ids)
     {
-      neighbor_sum += original_mesh.vertex_at(neighbor_id).xyz();
+      neighbor_sum += original_mesh.vertex_at(nid).xyz();
     }
     // Apply Loop subdivision weights: new_pos = center_weight * old_pos + neighbor_weight * neighbor_sum
-    Eigen::Vector3d new_pos = coeffs.center * original_pos + coeffs.neighbor * neighbor_sum;
+    Eigen::Vector3d new_pos = coeffs.center * orig_v.xyz() + coeffs.neighbor * neighbor_sum;
     // Update vertex position in current mesh
     mesh().vertex_at(v_id).data().xyz = new_pos;
   }
 }
 
-void
-Mesh_modifier::loop_update_new_vertex(Mesh_connectivity & original_mesh, int he_index)
-{
-}
+// bool
+// Mesh_modifier::subdivide_loop_opt()
+// {
+//   // 1. Validate triangular mesh
+//   if(!mohecore::analysis::is_triangular_mesh(mesh()))
+//     return false;
+
+//   // --- Snapshot ---
+//   const int V = mesh().n_total_vertices();
+//   const int F = mesh().n_total_faces();
+
+//   std::vector<Eigen::Vector3d> V0;
+//   V0.reserve(V);
+//   for(int v = 0; v < V; ++v)
+//     V0.push_back(mesh().vertex_at(v).xyz());
+
+//   struct Tri
+//   {
+//     int v[3];
+//   }; // Triangle by vertex indices
+//   std::vector<Tri> F0;
+//   F0.reserve(F); // Store all the faces
+
+//   for(int f = 0; f < F; ++f)
+//   {
+//     auto face = mesh().face_at(f);
+//     if(!face.is_active())
+//       continue;
+//     // Find and store all edges of the face
+//     auto he = face.half_edge();
+//     Tri t{he.origin().index(), he.next().origin().index(), he.next().next().origin().index()};
+//     // Fill vector with all faces
+//     F0.push_back(t);
+//   }
+
+//   // If no faces, nothing to do
+//   if (F0.empty()) return true;
+
+
+//   // --- Build one-rings using course Vertex_ring_iterator ---
+//   std::vector<std::vector<int>> one_ring(V);
+//   for (int v = 0; v < V; ++v) {
+//     auto vit = mesh().vertex_at(v);
+//     if (!vit.is_active()) continue;
+//     auto ring = mesh().vertex_ring_at(v);
+//     if (!ring.half_edge().is_active()) continue;
+
+//     // ring iterator enumerates half-edges ending at v; origin() is a neighbor
+//     std::vector<int> nbrs;
+//     do {
+//       int n = ring.half_edge().origin().index();
+//       // tiny dedupe (1-ring is small)
+//       bool seen = false; for (int x : nbrs) { if (x == n) { seen = true; break; } }
+//       if (!seen) nbrs.push_back(n);
+//     } while (ring.advance());
+//     one_ring[v] = std::move(nbrs);
+//   }
+
+//   return true;
+// }
 
 
 } // end of mohecore

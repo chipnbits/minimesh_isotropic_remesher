@@ -92,7 +92,7 @@ int main(int argc, char **argv)
     // Default behavior - write and use example mesh
     printf("writing example_mesh.obj \n");
     write_example_mesh();
-    filename = "./mesh/cube.obj";
+    filename = "./mesh/tetra.obj";
     printf("No filename provided, using default: %s\n", filename.c_str());
   }
 
