@@ -13,6 +13,9 @@ namespace minimesh
 namespace mohecore
 {
 
+// Define static constexpr member
+constexpr int Mesh_connectivity::invalid_index;
+
 // ========================================================
 //                      ITERATORS
 // ========================================================

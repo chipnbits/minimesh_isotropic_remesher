@@ -1,6 +1,6 @@
+#include <minimesh/core/mohe/mesh_analysis.hpp>
 #include <minimesh/core/mohe/mesh_modifier.hpp>
 #include <minimesh/core/util/assert.hpp>
-#include <minimesh/core/mohe/mesh_analysis.hpp>
 #include <queue>
 
 namespace minimesh
@@ -13,197 +13,386 @@ namespace mohecore
 // Given two vertices, this function return the index of the half-edge going from v0 to v1.
 // Returns -1 if no half-edge exists between the two vertices.
 //
-int Mesh_modifier::get_halfedge_between_vertices(const int v0, const int v1)
+int
+Mesh_modifier::get_halfedge_between_vertices(const int v0, const int v1)
 {
-	// Get a ring iterator for v0
-	Mesh_connectivity::Vertex_ring_iterator ring_iter = mesh().vertex_ring_at(v0);
+  // Get a ring iterator for v0
+  Mesh_connectivity::Vertex_ring_iterator ring_iter = mesh().vertex_ring_at(v0);
 
-	int answer = mesh().invalid_index;
+  int answer = mesh().invalid_index;
 
-	// Loop over all half-edges that end at v0.
-	do
-	{
-		// Make sure that the half-edge does end at v0
-		assert(ring_iter.half_edge().dest().index() == v0);
+  // Loop over all half-edges that end at v0.
+  do
+  {
+    // Make sure that the half-edge does end at v0
+    assert(ring_iter.half_edge().dest().index() == v0);
 
-		// If the half-edge also starts and v1, then it's twin
-		// goes from v0 to v1. This would be the half-edge that
-		// we were looking for
-		if(ring_iter.half_edge().origin().index() == v1)
-		{
-			answer = ring_iter.half_edge().twin().index();
-		}
-	} while(ring_iter.advance());
+    // If the half-edge also starts and v1, then it's twin
+    // goes from v0 to v1. This would be the half-edge that
+    // we were looking for
+    if(ring_iter.half_edge().origin().index() == v1)
+    {
+      answer = ring_iter.half_edge().twin().index();
+    }
+  } while(ring_iter.advance());
 
-	if(answer != mesh().invalid_index)
-	{
-		assert(mesh().half_edge_at(answer).origin().index() == v0);
-		assert(mesh().half_edge_at(answer).dest().index() == v1);
-	}
+  if(answer != mesh().invalid_index)
+  {
+    assert(mesh().half_edge_at(answer).origin().index() == v0);
+    assert(mesh().half_edge_at(answer).dest().index() == v1);
+  }
 
-	return answer;
+  return answer;
 }
 
-bool Mesh_modifier::flip_edge(const int he_index)
+bool
+Mesh_modifier::flip_edge(const int he_index)
 {
-	//
-	// Take a reference to all involved entities
-	//
+  //
+  // Take a reference to all involved entities
+  //
 
-	// HALF-EDGES
-	Mesh_connectivity::Half_edge_iterator he0 = mesh().half_edge_at(he_index);
-	Mesh_connectivity::Half_edge_iterator he1 = he0.twin();
+  // HALF-EDGES
+  Mesh_connectivity::Half_edge_iterator he0 = mesh().half_edge_at(he_index);
+  Mesh_connectivity::Half_edge_iterator he1 = he0.twin();
 
-	// meshes on the boundary are not flippable
-	if(he0.face().is_equal(mesh().hole()) || he1.face().is_equal(mesh().hole()))
-	{
-		return false;
-	}
+  // meshes on the boundary are not flippable
+  if(he0.face().is_equal(mesh().hole()) || he1.face().is_equal(mesh().hole()))
+  {
+    return false;
+  }
 
-	Mesh_connectivity::Half_edge_iterator he2 = he0.next();
-	Mesh_connectivity::Half_edge_iterator he3 = he2.next();
-	Mesh_connectivity::Half_edge_iterator he4 = he1.next();
-	Mesh_connectivity::Half_edge_iterator he5 = he4.next();
+  Mesh_connectivity::Half_edge_iterator he2 = he0.next();
+  Mesh_connectivity::Half_edge_iterator he3 = he2.next();
+  Mesh_connectivity::Half_edge_iterator he4 = he1.next();
+  Mesh_connectivity::Half_edge_iterator he5 = he4.next();
 
-	// VERTICES
-	Mesh_connectivity::Vertex_iterator v0 = he1.origin();
-	Mesh_connectivity::Vertex_iterator v1 = he0.origin();
-	Mesh_connectivity::Vertex_iterator v2 = he3.origin();
-	Mesh_connectivity::Vertex_iterator v3 = he5.origin();
+  // VERTICES
+  Mesh_connectivity::Vertex_iterator v0 = he1.origin();
+  Mesh_connectivity::Vertex_iterator v1 = he0.origin();
+  Mesh_connectivity::Vertex_iterator v2 = he3.origin();
+  Mesh_connectivity::Vertex_iterator v3 = he5.origin();
 
-	// FACES
-	Mesh_connectivity::Face_iterator f0 = he0.face();
-	Mesh_connectivity::Face_iterator f1 = he1.face();
+  // FACES
+  Mesh_connectivity::Face_iterator f0 = he0.face();
+  Mesh_connectivity::Face_iterator f1 = he1.face();
 
-	//
-	// Now modify the connectivity
-	//
+  //
+  // Now modify the connectivity
+  //
 
-	// HALF-EDGES
-	he0.data().next = he3.index();
-	he0.data().prev = he4.index();
-	he0.data().origin = v3.index();
-	//
-	he1.data().next = he5.index();
-	he1.data().prev = he2.index();
-	he1.data().origin = v2.index();
-	//
-	he2.data().next = he1.index();
-	he2.data().prev = he5.index();
-	he2.data().face = f1.index();
-	//
-	he3.data().next = he4.index();
-	he3.data().prev = he0.index();
-	//
-	he4.data().next = he0.index();
-	he4.data().prev = he3.index();
-	he4.data().face = f0.index();
-	//
-	he5.data().next = he2.index();
-	he5.data().prev = he1.index();
+  // HALF-EDGES
+  he0.data().next = he3.index();
+  he0.data().prev = he4.index();
+  he0.data().origin = v3.index();
+  //
+  he1.data().next = he5.index();
+  he1.data().prev = he2.index();
+  he1.data().origin = v2.index();
+  //
+  he2.data().next = he1.index();
+  he2.data().prev = he5.index();
+  he2.data().face = f1.index();
+  //
+  he3.data().next = he4.index();
+  he3.data().prev = he0.index();
+  //
+  he4.data().next = he0.index();
+  he4.data().prev = he3.index();
+  he4.data().face = f0.index();
+  //
+  he5.data().next = he2.index();
+  he5.data().prev = he1.index();
 
-	// VERTICES
-	v0.data().half_edge = he2.index();
-	v1.data().half_edge = he4.index();
-	v2.data().half_edge = he1.index();
-	v3.data().half_edge = he0.index();
+  // VERTICES
+  v0.data().half_edge = he2.index();
+  v1.data().half_edge = he4.index();
+  v2.data().half_edge = he1.index();
+  v3.data().half_edge = he0.index();
 
-	// FACES
-	f0.data().half_edge = he0.index();
-	f1.data().half_edge = he1.index();
+  // FACES
+  f0.data().half_edge = he0.index();
+  f1.data().half_edge = he1.index();
 
-	// operation successful
-	return true;
+  // operation successful
+  return true;
 } // All done
 
-bool Mesh_modifier::divide_edge(const int he_index, const double weight)
+int
+Mesh_modifier::divide_edge(const int he_index, const double weight)
 {
-	// Validate input index
-	if (he_index < 0 || he_index >= mesh().n_total_half_edges()) return false;
+  // Validate input index
+  if(he_index < 0 || he_index >= mesh().n_total_half_edges())
+    return mesh().invalid_index;
 
-	// Get the half-edge and its twin
-	auto he = mesh().half_edge_at(he_index);
-	if (!he.is_active()) return false;
+  // Get the half-edge and its twin
+  auto he = mesh().half_edge_at(he_index);
+  if(!he.is_active())
+    return mesh().invalid_index;
 
-	auto twin = he.twin();
-	if (!twin.is_active()) return false;
+  auto twin = he.twin();
+  if(!twin.is_active())
+    return mesh().invalid_index;
 
-	// Get the two vertices of the edge
-	auto origin_vertex = he.origin();
-	auto dest_vertex = twin.origin();  // Twin's origin is he's destination
+  // Get the two vertices of the edge
+  auto origin_vertex = he.origin();
+  auto dest_vertex = twin.origin(); // Twin's origin is he's destination
 
-	// Compute weighted position: weight * origin + (1-weight) * dest
-	Eigen::Vector3d new_pos = weight * origin_vertex.xyz() + (1.0 - weight) * dest_vertex.xyz();
+  // Compute weighted position: weight * origin + (1-weight) * dest
+  Eigen::Vector3d new_pos = weight * origin_vertex.xyz() + (1.0 - weight) * dest_vertex.xyz();
 
-	// Create new vertex at weighted position
-	auto new_vertex = mesh().add_vertex();
-	new_vertex.data().xyz = new_pos;
+  // Create new vertex at weighted position
+  auto new_vertex = mesh().add_vertex();
+  new_vertex.data().xyz = new_pos;
 
-	// Create two new half-edges to split the original edge
-	auto new_he = mesh().add_half_edge();
-	auto new_twin = mesh().add_half_edge();
+  // Create two new half-edges to split the original edge
+  auto new_he = mesh().add_half_edge();
+  auto new_twin = mesh().add_half_edge();
 
-	// Store original connectivity info before modification
-	int he_next = he.data().next;
-	int he_face = he.data().face;
+  // Store original connectivity info before modification
+  int he_next = he.data().next;
+  int he_face = he.data().face;
 
-	int twin_next = twin.data().next;
-	int twin_face = twin.data().face;
+  int twin_next = twin.data().next;
+  int twin_face = twin.data().face;
 
-	// Update original half-edge: now goes from origin to new vertex
-	he.data().next = new_he.index();
-	// prev stays the same
-	// face stays the same
-	// origin stays the same
-	he.data().twin = new_twin.index();
+  // Update original half-edge: now goes from origin to new vertex
+  he.data().next = new_he.index();
+  // prev stays the same
+  // face stays the same
+  // origin stays the same
+  he.data().twin = new_twin.index();
 
-	// Update new half-edge: goes from new vertex to destination
-	new_he.data().next = he_next;
-	new_he.data().prev = he.index();
-	new_he.data().twin = twin.index();
-	new_he.data().face = he_face;
-	new_he.data().origin = new_vertex.index();
+  // Update new half-edge: goes from new vertex to destination
+  new_he.data().next = he_next;
+  new_he.data().prev = he.index();
+  new_he.data().twin = twin.index();
+  new_he.data().face = he_face;
+  new_he.data().origin = new_vertex.index();
 
-	// Update original twin: now goes from dest to new vertex
-	twin.data().next = new_twin.index();
-	// prev stays the same
-	// face stays the same
-	// origin stays the same (dest_vertex)
-	twin.data().twin = new_he.index();
+  // Update original twin: now goes from dest to new vertex
+  twin.data().next = new_twin.index();
+  // prev stays the same
+  // face stays the same
+  // origin stays the same (dest_vertex)
+  twin.data().twin = new_he.index();
 
-	// Update new twin: goes from new vertex to origin
-	new_twin.data().next = twin_next;
-	new_twin.data().prev = twin.index();
-	new_twin.data().twin = he.index();
-	new_twin.data().face = twin_face;
-	new_twin.data().origin = new_vertex.index();
+  // Update new twin: goes from new vertex to origin
+  new_twin.data().next = twin_next;
+  new_twin.data().prev = twin.index();
+  new_twin.data().twin = he.index();
+  new_twin.data().face = twin_face;
+  new_twin.data().origin = new_vertex.index();
 
-	// Update next/prev pointers of adjacent half-edges
-	auto new_he_next_idx = new_he.data().next;
-	if (new_he_next_idx != mesh().invalid_index) {
-		new_he.next().data().prev = new_he.index();
-	}
-	auto new_twin_next_idx = new_twin.data().next;
-	if (new_twin_next_idx != mesh().invalid_index) {
-		mesh().half_edge_at(new_twin_next_idx).data().prev = new_twin.index();
-	}
+  // Update next/prev pointers of adjacent half-edges
+  auto new_he_next_idx = new_he.data().next;
+  if(new_he_next_idx != mesh().invalid_index)
+  {
+    new_he.next().data().prev = new_he.index();
+  }
+  auto new_twin_next_idx = new_twin.data().next;
+  if(new_twin_next_idx != mesh().invalid_index)
+  {
+    mesh().half_edge_at(new_twin_next_idx).data().prev = new_twin.index();
+  }
 
-	// Update vertex half-edge pointers
-	new_vertex.data().half_edge = new_he.index();
+  // Update vertex half-edge pointers
+  new_vertex.data().half_edge = new_he.index();
 
-	// Origin and dest vertices retained the same half-edge pointers
-	// Face retained the same half-edge pointers
+  // Origin and dest vertices retained the same half-edge pointers
+  // Face retained the same half-edge pointers
 
-	return true;
+  return new_vertex.index();
 }
 
-bool Mesh_modifier::subdivide_loop()
+bool
+Mesh_modifier::subdivide_loop()
 {
-	
-	// Placeholder
-	return true;
+  // 1. Validate triangular mesh
+  if(!mohecore::analysis::is_triangular_mesh(mesh()))
+    return false;
+
+  // 2. Create a copy of the original mesh connectivity for reference
+  Mesh_connectivity original_mesh;
+  original_mesh.copy(mesh());
+
+  // 3. Snapshot original faces and vertices, track visited edges and new vertices
+  std::vector<int> original_active_face_ids;
+  for(int f = 0; f < original_mesh.n_total_faces(); ++f)
+  {
+    auto face = original_mesh.face_at(f);
+    if(face.is_active())
+    {
+      original_active_face_ids.push_back(f);
+    }
+  }
+
+  // Store original active vertices for deformation step later
+  std::vector<int> original_active_vertex_ids;
+  for(int v = 0; v < original_mesh.n_total_vertices(); ++v)
+  {
+    auto vertex = original_mesh.vertex_at(v);
+    if(vertex.is_active())
+    {
+      original_active_vertex_ids.push_back(v);
+    }
+  }
+  // Track new vertices for correct deformation later
+  std::vector<int> vertex_new_positions;
+  // Preallocate space
+  vertex_new_positions.resize(original_mesh.n_active_half_edges() / 2, original_mesh.invalid_index);
+
+  // Create mapping from half-edge index to midpoint vertex index, invalid index means not visited
+  std::vector<int> edge_to_midpoint(original_mesh.n_total_half_edges(), original_mesh.invalid_index);
+
+
+  // Iterate over all faces in the original mesh
+  for(int f_id : original_active_face_ids)
+  {
+    auto face = original_mesh.face_at(f_id);
+    std::vector<int> edge_midpoint_vertices;
+
+    // Iterate over the half-edges of the face to split edges and collect midpoints
+    auto he_start = face.half_edge();
+    auto he = he_start;
+    do
+    {
+      int he_idx = he.index();
+      int twin_idx = he.twin().index();
+
+      // Check if edge has already been split
+      int new_midpoint;
+      if(edge_to_midpoint[he_idx] != original_mesh.invalid_index)
+      {
+        new_midpoint = edge_to_midpoint[he_idx];
+      }
+      else
+      {
+        // Edge has not been split, create a new midpoint
+        new_midpoint = divide_edge(he_idx, 0.5);
+        if(new_midpoint == mesh().invalid_index)
+        {
+          return false; // Failed to divide edge
+        }
+        edge_to_midpoint[he_idx] = new_midpoint;
+		edge_to_midpoint[twin_idx] = new_midpoint; // Twin edge shares the same midpoint
+		vertex_new_positions.push_back(new_midpoint); // Track new vertex for deformation later
+      }
+      edge_midpoint_vertices.push_back(new_midpoint);
+      he = he.next();
+    } while(!he.is_equal(he_start));
+
+    // Now create the four new faces from the original face and midpoints
+    Mesh_connectivity::Face_iterator new_face = mesh().face_at(f_id); // get the face from the current mesh
+    subdivide_face(new_face, edge_midpoint_vertices);
+  }
+
+  return true;
 }
 
+// At this stage triangle has divided edges, midpoint list available
+// Create four new triangles and deactivate the original one
+//
+//
+//           (4)
+//           / \\
+//          /   \\
+//         /     \\
+//       (5)------(3)
+//       / \\central/\\
+//      /   \\    /   \\
+//     /     \\  /     \\
+//   (0)-----(1)------(2)
+//
+bool
+Mesh_modifier::subdivide_face(Mesh_connectivity::Face_iterator & face, const std::vector<int> & edge_midpoint_vertices)
+{
+  // Validate input
+  if(edge_midpoint_vertices.size() != 3)
+    return false;
+  for(int v : edge_midpoint_vertices)
+  {
+    if(v < 0 || v >= mesh().n_total_vertices())
+      return false;
+  }
+
+  // Get onto the new face with half edge
+  auto he_start = face.half_edge();
+
+  // Fetch first half edge that starts at vertex 0,
+  auto he0 = he_start;
+  while(he0.origin().index() != edge_midpoint_vertices[0])
+  {
+    he0 = he0.next();
+    if(he0.is_equal(he_start))
+      return false; // midpoint not found on face
+  }
+
+
+  // Create outer faces & the central face. We'll collect the central edges.
+  auto central_face = mesh().add_face();
+  std::vector<int> central_edges; // indices of central half-edges we create
+  central_edges.reserve(3);
+
+  auto edge_start_12 = he0; // outer triangle seed edge
+  do
+  {
+    // the next outer triangle always 2 nexts away
+    auto next_start = edge_start_12.next().next();
+    auto outer_face = mesh().add_face();
+    auto new_he_31 = mesh().add_half_edge(); // 3 -> 1 part of outer face
+
+    // Close the outer triangle cycle: (1->2)->(2->3)->(3->1)
+    auto next_edge_23 = edge_start_12.next();
+    edge_start_12.data().prev = new_he_31.index();
+    next_edge_23.data().next = new_he_31.index();
+    new_he_31.data().next = edge_start_12.index();
+    new_he_31.data().prev = next_edge_23.index();
+
+    // Attach to outer face
+    new_he_31.data().face = outer_face.index();
+    edge_start_12.data().face = outer_face.index();
+    next_edge_23.data().face = outer_face.index();
+    outer_face.data().half_edge = new_he_31.index();
+
+    // Twin the edge with the central face edge
+    auto new_twin_13 = mesh().add_half_edge(); // 1 -> 3 part of central face
+    new_he_31.data().twin = new_twin_13.index();
+    new_twin_13.data().twin = new_he_31.index();
+    new_twin_13.data().face = central_face.index();
+
+    // Place origins correctly
+    new_he_31.data().origin = next_edge_23.dest().index();
+    new_twin_13.data().origin = edge_start_12.origin().index();
+
+    // Collect central edges for cycle
+    central_edges.push_back(new_twin_13.index());
+
+    // Advance to next outer triangle
+    edge_start_12 = next_start;
+  } while(!edge_start_12.is_equal(he_start));
+
+  // We must have exactly 3 central edges
+  if(central_edges.size() != 3)
+    return false;
+
+  // Set the face's reference edge ONCE
+  central_face.data().half_edge = central_edges[0];
+
+  // Close the central face cycle
+  for(int i = 0; i < 3; ++i)
+  {
+    int he_idx = central_edges[i];
+    int next_idx = central_edges[(i + 1) % 3];
+    int prev_idx = central_edges[(i + 2) % 3];
+    auto he = mesh().half_edge_at(he_idx);
+    he.data().next = next_idx;
+    he.data().prev = prev_idx;
+    he.data().face = central_face.index();
+  }
+
+  return true;
+}
 
 } // end of mohecore
 } // end of minimesh

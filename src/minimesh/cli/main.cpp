@@ -109,34 +109,9 @@ int main(int argc, char **argv)
   check_sanity_and_write_mesh();
 
   // Test edge division functionality
-  printf("dividing edge between vertices 1 and 2 at midpoint...\n");
-  int he_to_divide = modi.get_halfedge_between_vertices(1-1, 2-1);
-  if (he_to_divide >= 0) {
-    bool success = modi.divide_edge(he_to_divide, 0.5);
-    if (success) {
-      printf("Edge division successful!\n");
-      check_sanity_and_write_mesh("div12");
-    } else {
-      printf("Edge division failed!\n");
-    }
-  } else {
-    printf("Could not find edge between vertices 1 and 2\n");
-  }
-
-  // Test weighted edge division
-  printf("dividing edge between vertices 2 and 3 at 1/3 point...\n");
-  int he_to_divide_weighted = modi.get_halfedge_between_vertices(2-1, 3-1);
-  if (he_to_divide_weighted >= 0) {
-    bool success = modi.divide_edge(he_to_divide_weighted, 0.33);
-    if (success) {
-      printf("Weighted edge division successful!\n");
-      check_sanity_and_write_mesh("div23_weighted");
-    } else {
-      printf("Weighted edge division failed!\n");
-    }
-  } else {
-    printf("Could not find edge between vertices 2 and 3\n");
-  }
+  printf("dividing with subdivision\n");
+  modi.subdivide_loop();
+  check_sanity_and_write_mesh("subdivided_mesh");
 
   return 0;
 } // end of main()

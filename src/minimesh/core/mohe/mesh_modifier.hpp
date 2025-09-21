@@ -47,13 +47,13 @@ public:
 	bool flip_edge(const int he_index);
 
 	// Subdivide an edge by adding a vertex at weighted position between endpoints
-	bool divide_edge(const int he_index, const double weight = 0.5);
+	// Returns the index of the newly created vertex, or invalid_index if operation failed
+	int divide_edge(const int he_index, const double weight = 0.5);
 
 	// Loop subdivision (placeholder implementation)
 	bool subdivide_loop();
 
-	// Divide all edges in the mesh, tracking visited half-edges to avoid duplicates
-	bool divide_all_edges(const double weight = 0.5);
+	bool subdivide_face(Mesh_connectivity::Face_iterator& face, const std::vector<int>& edge_midpoint_vertices);
 
 
 private:
