@@ -130,4 +130,7 @@
     "semaphore": "cpp",
     "stop_token": "cpp"
   },
+  "[cpp]": {
+    "editor.defaultFormatter": "ms-vscode.cpptools"
+  },
 }

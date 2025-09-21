@@ -209,3 +209,105 @@ TEST_CASE("Edge division edge cases") {
         CHECK(mesh.n_active_vertices() == 3);
     }
 }
+
+TEST_CASE("Loop subdivision mesh properties") {
+    // Test Loop subdivision properties on different meshes
+    const char* test_meshes[] = {"mesh/cube.obj", "mesh/tetra.obj", "mesh/camel_simple.obj"};
+
+    for (const char* mesh_file : test_meshes) {
+        SUBCASE(mesh_file) {
+            mohecore::Mesh_connectivity mesh;
+            REQUIRE(load_test_mesh(mesh, mesh_file));
+
+            // Store original mesh properties
+            const int V_orig = mesh.n_active_vertices();
+            const int E_orig = mesh.n_active_half_edges() / 2;  // Half-edges to edges
+            const int F_orig = mesh.n_active_faces();
+
+            CAPTURE(V_orig);
+            CAPTURE(E_orig);
+            CAPTURE(F_orig);
+
+            // Apply Loop subdivision
+            mohecore::Mesh_modifier modifier(mesh);
+            bool success = modifier.subdivide_loop();
+            REQUIRE(success);
+
+            // Verify mesh is still valid after subdivision
+            CHECK(mesh.check_sanity_slowly(false));
+
+            // Get new mesh properties
+            const int V_new = mesh.n_active_vertices();
+            const int E_new = mesh.n_active_half_edges() / 2;
+            const int F_new = mesh.n_active_faces();
+
+            CAPTURE(V_new);
+            CAPTURE(E_new);
+            CAPTURE(F_new);
+
+            // Verify Loop subdivision properties:
+            // - faces is n × 4 (each triangle becomes 4 triangles)
+            CHECK(F_new == F_orig * 4);
+
+            // - vertices is V + (1/2)|E| (original vertices + edge midpoints)
+            CHECK(V_new == V_orig + E_orig);
+
+            // - edges: Each original edge becomes 2 edges, plus 3 new interior edges per face
+            // E_new = 2*E_orig + 3*F_orig
+            CHECK(E_new == 2 * E_orig + 3 * F_orig);
+
+            // Additional sanity checks
+            CHECK(V_new > V_orig);
+            CHECK(E_new > E_orig);
+            CHECK(F_new > F_orig);
+        }
+    }
+}
+
+TEST_CASE("Loop subdivision properties - simple triangle") {
+    mohecore::Mesh_connectivity mesh;
+    mohecore::Mesh_modifier modifier(mesh);
+
+    // Create a simple triangle mesh
+    std::vector<double> xyz = {
+        0.0, 0.0, 0.0,  // vertex 0
+        1.0, 0.0, 0.0,  // vertex 1
+        0.5, 1.0, 0.0   // vertex 2
+    };
+    std::vector<int> triangle_verts = {0, 1, 2};
+
+    mesh.build_from_triangles(xyz, triangle_verts);
+    REQUIRE(mesh.check_sanity_slowly(false));
+
+    // Store original properties for single triangle
+    const int V_orig = 3;  // vertices
+    const int E_orig = 3;  // edges
+    const int F_orig = 1;  // faces
+
+    CHECK(mesh.n_active_vertices() == V_orig);
+    CHECK(mesh.n_active_half_edges() / 2 == E_orig);
+    CHECK(mesh.n_active_faces() == F_orig);
+
+    // Apply Loop subdivision
+    bool success = modifier.subdivide_loop();
+    REQUIRE(success);
+
+    // Verify mesh is still valid
+    CHECK(mesh.check_sanity_slowly(false));
+
+    // Get new properties
+    const int V_new = mesh.n_active_vertices();
+    const int E_new = mesh.n_active_half_edges() / 2;
+    const int F_new = mesh.n_active_faces();
+
+    // Check Loop subdivision formulas for single triangle:
+    // - faces: 1 × 4 = 4
+    CHECK(F_new == 4);
+
+    // - vertices: 3 + 3 = 6 (original vertices + edge midpoints)
+    CHECK(V_new == 6);
+
+    // - edges: Each original edge becomes 2 edges, plus 3 new interior edges per face
+    // E_new = 2*3 + 3*1 = 9
+    CHECK(E_new == 9);
+}

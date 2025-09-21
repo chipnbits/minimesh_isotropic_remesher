@@ -1252,12 +1252,16 @@ src/minimesh/core/CMakeFiles/minimeshcore.dir/mohe/mesh_modifier.cpp.o: /home/sg
   /usr/include/c++/11/bits/cxxabi_forced.h \
   /usr/include/c++/11/bits/cxxabi_init_exception.h \
   /usr/include/c++/11/bits/deque.tcc \
+  /usr/include/c++/11/bits/enable_special_members.h \
+  /usr/include/c++/11/bits/erase_if.h \
   /usr/include/c++/11/bits/exception.h \
   /usr/include/c++/11/bits/exception_defines.h \
   /usr/include/c++/11/bits/exception_ptr.h \
   /usr/include/c++/11/bits/functexcept.h \
   /usr/include/c++/11/bits/functional_hash.h \
   /usr/include/c++/11/bits/hash_bytes.h \
+  /usr/include/c++/11/bits/hashtable.h \
+  /usr/include/c++/11/bits/hashtable_policy.h \
   /usr/include/c++/11/bits/invoke.h \
   /usr/include/c++/11/bits/ios_base.h \
   /usr/include/c++/11/bits/istream.tcc \
@@ -1300,6 +1304,7 @@ src/minimesh/core/CMakeFiles/minimeshcore.dir/mohe/mesh_modifier.cpp.o: /home/sg
   /usr/include/c++/11/bits/streambuf_iterator.h \
   /usr/include/c++/11/bits/stringfwd.h \
   /usr/include/c++/11/bits/uniform_int_dist.h \
+  /usr/include/c++/11/bits/unordered_map.h \
   /usr/include/c++/11/bits/uses_allocator.h \
   /usr/include/c++/11/bits/vector.tcc \
   /usr/include/c++/11/cassert \
@@ -1320,6 +1325,7 @@ src/minimesh/core/CMakeFiles/minimeshcore.dir/mohe/mesh_modifier.cpp.o: /home/sg
   /usr/include/c++/11/debug/debug.h \
   /usr/include/c++/11/deque \
   /usr/include/c++/11/exception \
+  /usr/include/c++/11/ext/aligned_buffer.h \
   /usr/include/c++/11/ext/alloc_traits.h \
   /usr/include/c++/11/ext/atomicity.h \
   /usr/include/c++/11/ext/new_allocator.h \
@@ -1344,6 +1350,7 @@ src/minimesh/core/CMakeFiles/minimeshcore.dir/mohe/mesh_modifier.cpp.o: /home/sg
   /usr/include/c++/11/tuple \
   /usr/include/c++/11/type_traits \
   /usr/include/c++/11/typeinfo \
+  /usr/include/c++/11/unordered_map \
   /usr/include/c++/11/utility \
   /usr/include/c++/11/vector \
   /usr/include/ctype.h \
@@ -1813,6 +1820,12 @@ src/minimesh/core/CMakeFiles/minimeshcore.dir/util/get_basefilename.cpp.o: /home
 
 /usr/include/linux/close_range.h:
 
+/usr/include/c++/11/unordered_map:
+
+/usr/include/c++/11/bits/unordered_map.h:
+
+/usr/include/c++/11/bits/hashtable.h:
+
 /home/sghys/projects/CPSC524-modeling/src/minimesh/core/util/get_basefilename.cpp:
 
 /home/sghys/projects/CPSC524-modeling/src/minimesh/core/mohe/mesh_modifier.cpp:
@@ -1969,6 +1982,8 @@ src/minimesh/core/CMakeFiles/minimeshcore.dir/util/get_basefilename.cpp.o: /home
 
 /home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/plugins/MatrixCwiseUnaryOps.h:
 
+/usr/include/c++/11/bits/enable_special_members.h:
+
 /usr/include/c++/11/bits/codecvt.h:
 
 /usr/include/c++/11/bits/basic_ios.tcc:
@@ -2090,6 +2105,8 @@ src/minimesh/core/CMakeFiles/minimeshcore.dir/util/get_basefilename.cpp.o: /home
 /home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/arch/GPU/PacketMathHalf.h:
 
 /usr/include/x86_64-linux-gnu/bits/statx-generic.h:
+
+/usr/include/c++/11/bits/hashtable_policy.h:
 
 /home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/arch/Default/ConjHelper.h:
 

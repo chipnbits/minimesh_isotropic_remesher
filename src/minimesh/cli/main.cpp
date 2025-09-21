@@ -16,6 +16,7 @@
 #include <minimesh/core/mohe/mesh_connectivity.hpp>
 #include <minimesh/core/mohe/mesh_io.hpp>
 #include <minimesh/core/mohe/mesh_modifier.hpp>
+#include <minimesh/core/mohe/mesh_analysis.hpp>
 
 using namespace minimesh;
 
@@ -91,7 +92,7 @@ int main(int argc, char **argv)
     // Default behavior - write and use example mesh
     printf("writing example_mesh.obj \n");
     write_example_mesh();
-    filename = "./mesh/tetra.obj";
+    filename = "./mesh/cube.obj";
     printf("No filename provided, using default: %s\n", filename.c_str());
   }
 
@@ -122,8 +123,15 @@ int main(int argc, char **argv)
   check_sanity_and_write_mesh();
 
   // Test edge division functionality
+  printf("Total vertices: %d \n", mesh.n_active_vertices());
+  printf("Total faces: %d \n", mesh.n_active_faces());
+  printf("Total half-edges: %d \n", mesh.n_active_half_edges());
   printf("dividing with subdivision\n");
-  modi.subdivide_loop();
+  modi.subdivide_loop();  modi.subdivide_loop();  modi.subdivide_loop();
+  printf("Total vertices: %d \n", mesh.n_active_vertices());
+  printf("Total faces: %d \n", mesh.n_active_faces());
+  printf("Total half-edges: %d \n", mesh.n_active_half_edges());
+
   check_sanity_and_write_mesh("subdivided_mesh");
   return 0;
 } // end of main()

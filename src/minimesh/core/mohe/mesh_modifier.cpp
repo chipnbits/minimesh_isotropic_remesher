@@ -1,12 +1,51 @@
+#include <cmath>
 #include <minimesh/core/mohe/mesh_analysis.hpp>
 #include <minimesh/core/mohe/mesh_modifier.hpp>
 #include <minimesh/core/util/assert.hpp>
 #include <queue>
+#include <unordered_map>
 
 namespace minimesh
 {
 namespace mohecore
 {
+
+namespace
+{
+struct LoopEvenCoeffs
+{
+  double center; // weight for the center vertex
+  double neighbor; // weight for each 1-ring neighbor
+};
+
+// Compute and cache coefficients for a given valence n.
+// Using formula: beta = (40 - (3 + 2*cos(2π/n))^2) / (64*n)
+// then center = 1 - n*beta; neighbor = beta.
+static const LoopEvenCoeffs &
+coeffs_for_valence(int n)
+{
+  static std::unordered_map<int, LoopEvenCoeffs> cache;
+  auto it = cache.find(n);
+  if(it != cache.end())
+    return it->second;
+
+  // Guard against degenerate valences
+  if(n < 3)
+  {
+    static const LoopEvenCoeffs kFallback{1.0, 0.0};
+    return kFallback;
+  }
+
+  const double c = std::cos(2.0 * M_PI / static_cast<double>(n));
+  const double beta = (40.0 - std::pow(3.0 + 2.0 * c, 2.0)) / (64.0 * static_cast<double>(n));
+  const double center = 1.0 - static_cast<double>(n) * beta;
+
+  LoopEvenCoeffs coeff{center, beta};
+
+  auto ins = cache.emplace(n, coeff);
+  return ins.first->second;
+}
+} // namespace
 
 
 //
@@ -237,14 +276,9 @@ Mesh_modifier::subdivide_loop()
       original_active_vertex_ids.push_back(v);
     }
   }
-  // Track new vertices for correct deformation later
-  std::vector<int> vertex_new_positions;
-  // Preallocate space
-  vertex_new_positions.resize(original_mesh.n_active_half_edges() / 2, original_mesh.invalid_index);
 
   // Create mapping from half-edge index to midpoint vertex index, invalid index means not visited
   std::vector<int> edge_to_midpoint(original_mesh.n_total_half_edges(), original_mesh.invalid_index);
-
 
   // Iterate over all faces in the original mesh
   for(int f_id : original_active_face_ids)
@@ -275,8 +309,15 @@ Mesh_modifier::subdivide_loop()
           return false; // Failed to divide edge
         }
         edge_to_midpoint[he_idx] = new_midpoint;
-		edge_to_midpoint[twin_idx] = new_midpoint; // Twin edge shares the same midpoint
-		vertex_new_positions.push_back(new_midpoint); // Track new vertex for deformation later
+        edge_to_midpoint[twin_idx] = new_midpoint; // Twin edge shares the same midpoint
+        // Update position of new vertex using Loop rules
+        auto split_edge = original_mesh.half_edge_at(he_idx);
+        auto twin_edge = split_edge.twin();
+        // Position new vertex using Loop subdivision rules for new vertices
+        Eigen::Vector3d new_pos =
+            0.375 * (split_edge.origin().xyz() + split_edge.dest().xyz())
+          + 0.125 * (split_edge.next().dest().xyz() + twin_edge.next().dest().xyz());
+        mesh().vertex_at(new_midpoint).data().xyz = new_pos;
       }
       edge_midpoint_vertices.push_back(new_midpoint);
       he = he.next();
@@ -286,6 +327,8 @@ Mesh_modifier::subdivide_loop()
     Mesh_connectivity::Face_iterator new_face = mesh().face_at(f_id); // get the face from the current mesh
     subdivide_face(new_face, edge_midpoint_vertices);
   }
+  // Move the old vertices
+  loop_update_old_vertices(original_mesh, original_active_vertex_ids);
 
   return true;
 }
@@ -307,9 +350,7 @@ Mesh_modifier::subdivide_loop()
 bool
 Mesh_modifier::subdivide_face(Mesh_connectivity::Face_iterator & face, const std::vector<int> & edge_midpoint_vertices)
 {
-  // Validate input
-  if(edge_midpoint_vertices.size() != 3)
-    return false;
+
   for(int v : edge_midpoint_vertices)
   {
     if(v < 0 || v >= mesh().n_total_vertices())
@@ -332,7 +373,7 @@ Mesh_modifier::subdivide_face(Mesh_connectivity::Face_iterator & face, const std
   // Create outer faces & the central face. We'll collect the central edges.
   auto central_face = mesh().add_face();
   std::vector<int> central_edges; // indices of central half-edges we create
-  central_edges.reserve(3);
+  central_edges.reserve(edge_midpoint_vertices.size());
 
   auto edge_start_12 = he0; // outer triangle seed edge
   do
@@ -372,8 +413,8 @@ Mesh_modifier::subdivide_face(Mesh_connectivity::Face_iterator & face, const std
     edge_start_12 = next_start;
   } while(!(edge_start_12.index() == he0.index()));
 
-  // We must have exactly 3 central edges
-  if(central_edges.size() != 3)
+  // We must have a ring of central edges now
+  if(central_edges.size() != edge_midpoint_vertices.size())
     return false;
 
   // Set the face's reference edge ONCE
@@ -396,6 +437,50 @@ Mesh_modifier::subdivide_face(Mesh_connectivity::Face_iterator & face, const std
 
   return true;
 }
+
+
+void
+Mesh_modifier::loop_update_old_vertices(Mesh_connectivity & original_mesh,
+    const std::vector<int> & original_active_vertex_ids)
+{
+  // Find the umbrella of neighbors using the ring iterator
+  for(int v_id : original_active_vertex_ids)
+  {
+    // Get ring iterator
+    Mesh_connectivity::Vertex_ring_iterator v_ring = original_mesh.vertex_ring_at(v_id);
+    // Grab all neighbors
+    std::vector<int> neighbor_ids;
+    do
+    {
+      // Record the origins since half-edges point to v_id
+      neighbor_ids.push_back(v_ring.half_edge().origin().index());
+    } while(v_ring.advance());
+
+    // Compute beta
+    int n = static_cast<int>(neighbor_ids.size());
+    const LoopEvenCoeffs & coeffs = coeffs_for_valence(n);
+
+    // Get original vertex position
+    Eigen::Vector3d original_pos = original_mesh.vertex_at(v_id).xyz();
+
+    // Compute weighted sum of neighbor positions
+    Eigen::Vector3d neighbor_sum = Eigen::Vector3d::Zero();
+    for(int neighbor_id : neighbor_ids)
+    {
+      neighbor_sum += original_mesh.vertex_at(neighbor_id).xyz();
+    }
+    // Apply Loop subdivision weights: new_pos = center_weight * old_pos + neighbor_weight * neighbor_sum
+    Eigen::Vector3d new_pos = coeffs.center * original_pos + coeffs.neighbor * neighbor_sum;
+    // Update vertex position in current mesh
+    mesh().vertex_at(v_id).data().xyz = new_pos;
+  }
+}
+
+void
+Mesh_modifier::loop_update_new_vertex(Mesh_connectivity & original_mesh, int he_index)
+{
+}
+
 
 } // end of mohecore
 } // end of minimesh

@@ -3,6 +3,7 @@
 
 src/minimesh/cli/CMakeFiles/minimeshcli.dir/main.cpp.o
  /home/sghys/projects/CPSC524-modeling/src/minimesh/cli/main.cpp
+ /home/sghys/projects/CPSC524-modeling/src/minimesh/core/mohe/mesh_analysis.hpp
  /home/sghys/projects/CPSC524-modeling/src/minimesh/core/mohe/mesh_connectivity.hpp
  /home/sghys/projects/CPSC524-modeling/src/minimesh/core/mohe/mesh_io.hpp
  /home/sghys/projects/CPSC524-modeling/src/minimesh/core/mohe/mesh_modifier.hpp

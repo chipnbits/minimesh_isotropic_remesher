@@ -3,3 +3,4 @@ mesh.zip
 .cache/
 *.obj
 *.vtk
+build-dbg/

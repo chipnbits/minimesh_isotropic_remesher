@@ -317,4 +317,5 @@ src/minimesh/cli/CMakeFiles/minimeshcli.dir/main.cpp.o: \
  /home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/GlobalFunctions.h \
  /home/sghys/projects/CPSC524-modeling/third-party/eigen/Eigen/src/Core/util/ReenableStupidWarnings.h \
  /home/sghys/projects/CPSC524-modeling/src/minimesh/core/mohe/mesh_io.hpp \
- /home/sghys/projects/CPSC524-modeling/src/minimesh/core/mohe/mesh_modifier.hpp
+ /home/sghys/projects/CPSC524-modeling/src/minimesh/core/mohe/mesh_modifier.hpp \
+ /home/sghys/projects/CPSC524-modeling/src/minimesh/core/mohe/mesh_analysis.hpp
