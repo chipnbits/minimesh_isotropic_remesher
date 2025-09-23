@@ -1,1 +1,0 @@
-/usr/bin/c++ -g CMakeFiles/minimeshcli.dir/main.cpp.o -o ../../../bin/minimeshcli  ../core/libminimeshcore.a

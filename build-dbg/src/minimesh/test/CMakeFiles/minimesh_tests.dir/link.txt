@@ -1,1 +1,0 @@
-/usr/bin/c++ -g CMakeFiles/minimesh_tests.dir/test_mesh_properties.cpp.o CMakeFiles/minimesh_tests.dir/test_subdivision.cpp.o CMakeFiles/minimesh_tests.dir/test_mesh_utils.cpp.o -o minimesh_tests  ../core/libminimeshcore.a
