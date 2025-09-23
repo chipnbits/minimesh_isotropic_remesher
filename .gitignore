@@ -4,3 +4,4 @@ mesh.zip
 *.obj
 *.vtk
 build-dbg/
+build-opt/
