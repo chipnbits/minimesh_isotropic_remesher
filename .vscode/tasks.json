@@ -6,7 +6,7 @@
       "type": "shell",
       "command": "cmake --preset debug && cmake --build --preset debug -j6",
       "options": { "cwd": "${workspaceFolder}" },
-      "group": { "kind": "build", "isDefault": true },
+      "group": { "kind": "build", "isDefault": false },
       "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
     },
     {
@@ -49,6 +49,6 @@
       "group": { "kind": "test", "isDefault": true },
       "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
       "dependsOn": "Build (Debug, cmake CLI)"
-    },
+    }
   ]
 }
