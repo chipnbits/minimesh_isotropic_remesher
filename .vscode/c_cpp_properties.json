@@ -31,7 +31,9 @@
         "/usr/include",
         "${workspaceFolder}/third-party/glui/bin-opensuse-gcc731/debug/include",
         "${workspaceFolder}/third-party/freeglut/bin-opensuse-gcc731/debug/include",
-        "${workspaceFolder}/third-party/eigen"
+        "${workspaceFolder}/third-party/eigen",
+        "${workspaceFolder}/third-party/doctest"
+
       ],
       "defines": [],
       "cStandard": "c11",
