@@ -258,7 +258,7 @@ Mesh_modifier::subdivide_loop()
   // 2. Create a copy of the original mesh connectivity for reference
   Mesh_connectivity original_mesh;
   original_mesh.copy(mesh());
-  
+
   // 3. Snapshot original faces and vertices, track visited edges and new vertices
   std::vector<int> original_active_face_ids;
   for(int f = 0; f < original_mesh.n_total_faces(); ++f)
@@ -302,7 +302,7 @@ Mesh_modifier::subdivide_loop()
       // Check if edge has already been split
       int new_midpoint = edge_to_midpoint[he_idx];
       if(new_midpoint == original_mesh.invalid_index)
-      {      
+      {
         // Edge has not been split, create a new midpoint
         new_midpoint = divide_edge(he_idx, 0.5);
         if(new_midpoint == mesh().invalid_index)
@@ -462,14 +462,14 @@ Mesh_modifier::loop_update_old_vertices(Mesh_connectivity & original_mesh,
     Mesh_connectivity::Vertex_ring_iterator v_ring = original_mesh.vertex_ring_at(v_id);
 
     // Check special boundary condition branch
-    if (v_ring.reset_boundary()) {
+    if(v_ring.reset_boundary())
+    {
       int n1 = v_ring.half_edge().origin().index();
       v_ring.advance();
       int n2 = v_ring.half_edge().origin().index();
 
       const Eigen::Vector3d v = original_mesh.vertex_at(v_id).xyz();
-      const Eigen::Vector3d nsum =
-          original_mesh.vertex_at(n1).xyz() + original_mesh.vertex_at(n2).xyz();
+      const Eigen::Vector3d nsum = original_mesh.vertex_at(n1).xyz() + original_mesh.vertex_at(n2).xyz();
 
       mesh().vertex_at(v_id).data().xyz = 0.75 * v + 0.125 * nsum;
       continue;
@@ -503,68 +503,6 @@ Mesh_modifier::loop_update_old_vertices(Mesh_connectivity & original_mesh,
     mesh().vertex_at(v_id).data().xyz = new_pos;
   }
 }
-
-// bool
-// Mesh_modifier::subdivide_loop_opt()
-// {
-//   // 1. Validate triangular mesh
-//   if(!mohecore::analysis::is_triangular_mesh(mesh()))
-//     return false;
-
-//   // --- Snapshot ---
-//   const int V = mesh().n_total_vertices();
-//   const int F = mesh().n_total_faces();
-
-//   std::vector<Eigen::Vector3d> V0;
-//   V0.reserve(V);
-//   for(int v = 0; v < V; ++v)
-//     V0.push_back(mesh().vertex_at(v).xyz());
-
-//   struct Tri
-//   {
-//     int v[3];
-//   }; // Triangle by vertex indices
-//   std::vector<Tri> F0;
-//   F0.reserve(F); // Store all the faces
-
-//   for(int f = 0; f < F; ++f)
-//   {
-//     auto face = mesh().face_at(f);
-//     if(!face.is_active())
-//       continue;
-//     // Find and store all edges of the face
-//     auto he = face.half_edge();
-//     Tri t{he.origin().index(), he.next().origin().index(), he.next().next().origin().index()};
-//     // Fill vector with all faces
-//     F0.push_back(t);
-//   }
-
-//   // If no faces, nothing to do
-//   if (F0.empty()) return true;
-
-
-//   // --- Build one-rings using course Vertex_ring_iterator ---
-//   std::vector<std::vector<int>> one_ring(V);
-//   for (int v = 0; v < V; ++v) {
-//     auto vit = mesh().vertex_at(v);
-//     if (!vit.is_active()) continue;
-//     auto ring = mesh().vertex_ring_at(v);
-//     if (!ring.half_edge().is_active()) continue;
-
-//     // ring iterator enumerates half-edges ending at v; origin() is a neighbor
-//     std::vector<int> nbrs;
-//     do {
-//       int n = ring.half_edge().origin().index();
-//       // tiny dedupe (1-ring is small)
-//       bool seen = false; for (int x : nbrs) { if (x == n) { seen = true; break; } }
-//       if (!seen) nbrs.push_back(n);
-//     } while (ring.advance());
-//     one_ring[v] = std::move(nbrs);
-//   }
-
-//   return true;
-// }
-
 
 } // end of mohecore
 } // end of minimesh
