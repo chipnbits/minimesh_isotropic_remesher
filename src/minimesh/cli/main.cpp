@@ -9,6 +9,7 @@
 
 #include <cstdio>
 #include <string>
+#include <chrono>
 
 #include <minimesh/core/util/assert.hpp>
 #include <minimesh/core/util/macros.hpp>
@@ -126,8 +127,23 @@ int main(int argc, char **argv)
   printf("Total vertices: %d \n", mesh.n_active_vertices());
   printf("Total faces: %d \n", mesh.n_active_faces());
   printf("Total half-edges: %d \n", mesh.n_active_half_edges());
+
   printf("dividing with subdivision\n");
+
+  auto start = std::chrono::high_resolution_clock::now();
   modi.subdivide_loop();
+  modi.subdivide_loop();
+  modi.subdivide_loop();
+  modi.subdivide_loop();
+  modi.subdivide_loop();
+  modi.subdivide_loop();
+  modi.subdivide_loop();
+  modi.subdivide_loop();
+  auto end   = std::chrono::high_resolution_clock::now();
+
+  std::chrono::duration<double> elapsed = end - start;
+  printf("Subdivision took %.6f seconds\n", elapsed.count());
+
   printf("Total vertices: %d \n", mesh.n_active_vertices());
   printf("Total faces: %d \n", mesh.n_active_faces());
   printf("Total half-edges: %d \n", mesh.n_active_half_edges());

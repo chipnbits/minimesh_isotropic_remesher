@@ -251,9 +251,10 @@ Mesh_modifier::divide_edge(const int he_index, const double weight)
 bool
 Mesh_modifier::subdivide_loop()
 {
-  // 1. Validate triangular mesh
-  if(!mohecore::analysis::is_triangular_mesh(mesh()))
-    return false;
+  // Calidate mesh
+  assert(mesh().check_sanity_slowly());
+  // if(!mohecore::analysis::is_triangular_mesh(mesh()))
+  //   return false;
 
   // 2. Create a copy of the original mesh connectivity for reference
   Mesh_connectivity original_mesh;
@@ -341,7 +342,6 @@ Mesh_modifier::subdivide_loop()
   }
   // Move the old vertices
   loop_update_old_vertices(original_mesh, original_active_vertex_ids);
-
   return true;
 }
 

@@ -71,7 +71,7 @@ private:
   void loop_update_old_vertices(Mesh_connectivity & original_mesh,
       const std::vector<int> & original_active_vertex_ids);
 
-  bool subdivide_loop_opt();
+
 };
 
 
