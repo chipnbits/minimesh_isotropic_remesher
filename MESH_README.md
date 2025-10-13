@@ -15,7 +15,10 @@ and interacting with them is also provided.
 
 <div style="text-align:center"><img src="imgs/half-edge.svg" width="300"></img></div>
 
-Examples of mesh modification operations such as `edge flip` are provided in `src/minimesh/core/mohe/mesh_modifier.[ch]pp`.
+Examples of mesh modification operations such as `edge flip` are provided in various mesh modifier classes in `src/minimesh/core/mohe/`:
+- `mesh_modifier_loop_subdivision.[ch]pp` - Loop subdivision operations
+- `mesh_modifier_edge_collapse.[ch]pp` - Edge collapse operations
+- `mesh_modifier_template.[ch]pp` - Template for creating new modifiers
 
 <div style="text-align:center">
 <img src="imgs/edge-flip.svg" width="300"></img>

@@ -61,8 +61,17 @@ The CLI in `src/minimesh/cli/main.cpp:75` is a simple executable that demonstrat
 
 ## Extending for Transforms and Traversals
 
-### 1. **Create New Algorithms in `mesh_modifier.hpp`**
-Add methods to the `Mesh_modifier` class following the pattern of `flip_edge()`:
+### 1. **Create New Mesh Modifier Classes**
+The project uses specialized mesh modifier classes for different operations:
+
+- `Mesh_modifier_loop_subdivision` (`mesh_modifier_loop_subdivision.hpp/cpp`) - Loop subdivision operations
+- `Mesh_modifier_edge_collapse` (`mesh_modifier_edge_collapse.hpp/cpp`) - Edge collapse operations
+- `Mesh_modifier_template` (`mesh_modifier_template.hpp/cpp`) - Template for new modifiers
+
+To create a new modifier:
+1. Copy `mesh_modifier_template.hpp/cpp` to a new name (e.g., `mesh_modifier_smoothing.hpp/cpp`)
+2. Rename the class from `Mesh_modifier_template` to your new name
+3. Add your new methods following the pattern of `flip_edge()`:
 
 ```cpp
 // Example: Add vertex smoothing
@@ -71,6 +80,8 @@ bool smooth_vertex(int vertex_id);
 // Example: Add face subdivision
 std::vector<int> subdivide_face(int face_id);
 ```
+
+4. Add the new files to `src/minimesh/core/CMakeLists.txt`
 
 ### 2. **Use Iterator Patterns for Traversals**
 ```cpp
@@ -91,7 +102,7 @@ do {
 ```
 
 ### 3. **Mesh Transforms Implementation Pattern**
-Follow the `flip_edge()` pattern in `mesh_modifier.cpp:46`:
+Follow the `flip_edge()` pattern in any of the mesh modifier implementation files (e.g., `mesh_modifier_template.cpp:46`):
 - Get iterators to relevant entities
 - Check validity/boundary conditions
 - Modify connectivity via `.data()` access
@@ -127,4 +138,4 @@ The half-edge structure provides O(1) navigation between adjacent mesh elements,
 3. **Across mesh**: Iterate through all active entities using total count and `is_active()` checks
 4. **Neighborhood queries**: Use `get_halfedge_between_vertices()` for connectivity queries
 
-The codebase follows a clear separation between connectivity (`mesh_connectivity`), modification (`mesh_modifier`), and I/O (`mesh_io`), making it straightforward to extend with new geometric algorithms.
+The codebase follows a clear separation between connectivity (`mesh_connectivity`), modification (various `mesh_modifier_*` classes), and I/O (`mesh_io`), making it straightforward to extend with new geometric algorithms. Use `mesh_modifier_template` as a starting point for implementing new modifier classes.

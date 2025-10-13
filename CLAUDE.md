@@ -122,15 +122,35 @@ void swap(Mesh_connectivity& other);
 void clear();
 ```
 
-## Mesh_modifier Methods
+## Mesh Modifier Classes
 
-### Edge Operations
+The minimesh library includes multiple mesh modifier classes for different types of operations:
+
+### Mesh_modifier_loop_subdivision
+**Location**: `mesh_modifier_loop_subdivision.hpp/cpp` in `src/minimesh/core/mohe/`
+
+**Methods:**
 ```cpp
 int get_halfedge_between_vertices(int v0, int v1);  // Returns half-edge from v0 to v1
 bool flip_edge(int he_index);                       // Flip edge (triangular meshes only)
 bool divide_edge(int he_index, double weight = 0.5); // Subdivide edge with weighted vertex placement
-bool subdivide_loop();                               // Loop subdivision (placeholder)
+bool subdivide_loop();                               // Loop subdivision
 ```
+
+### Mesh_modifier_edge_collapse
+**Location**: `mesh_modifier_edge_collapse.hpp/cpp` in `src/minimesh/core/mohe/`
+
+**Methods:**
+```cpp
+int get_halfedge_between_vertices(int v0, int v1);  // Returns half-edge from v0 to v1
+bool flip_edge(int he_index);                       // Flip edge (triangular meshes only)
+// Additional edge collapse operations...
+```
+
+### Mesh_modifier_template
+**Location**: `mesh_modifier_template.hpp/cpp` in `src/minimesh/core/mohe/`
+
+Template file for creating new mesh modifier classes. Contains basic methods (`get_halfedge_between_vertices`, `flip_edge`) to serve as a starting point for implementing new mesh modification algorithms.
 
 ## Mesh Analysis Utilities
 
