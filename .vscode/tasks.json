@@ -1,54 +1,113 @@
 {
-  "version": "2.0.0",
-  "tasks": [
-    {
-      "label": "Configure and Build (Debug)",
-      "type": "shell",
-      "command": "cmake --preset debug && cmake --build --preset debug -j6",
-      "options": { "cwd": "${workspaceFolder}" },
-      "group": { "kind": "build", "isDefault": false },
-      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
-    },
-    {
-      "label": "Build (Debug, cmake CLI)",
-      "type": "shell",
-      "command": "cmake --build --preset debug -j6",
-      "options": { "cwd": "${workspaceFolder}" },
-      "group": { "kind": "build", "isDefault": false },
-      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
-    },
-    {
-      "label": "Clean (Debug, cmake CLI)",
-      "type": "shell",
-      "command": "cmake --build --preset debug --target clean -j6",
-      "options": { "cwd": "${workspaceFolder}" },
-      "group": "build",
-      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
-    },
-    {
-      "label": "Build (RelWithDebInfo, cmake CLI)",
-      "type": "shell",
-      "command": "cmake --build --preset relwithdebinfo -j6",
-      "options": { "cwd": "${workspaceFolder}" },
-      "group": "build",
-      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
-    },
-    {
-      "label": "Clean (RelWithDebInfo, cmake CLI)",
-      "type": "shell",
-      "command": "cmake --build --preset relwithdebinfo --target clean -j6",
-      "options": { "cwd": "${workspaceFolder}" },
-      "group": "build",
-      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
-    },
-    {
-      "label": "Run Tests (Debug)",
-      "type": "shell",
-      "command": "./build-dbg/bin/minimesh_tests",
-      "options": { "cwd": "${workspaceFolder}" },
-      "group": { "kind": "test", "isDefault": true },
-      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
-      "dependsOn": "Build (Debug, cmake CLI)"
-    }
-  ]
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Configure and Build (Debug)",
+            "type": "shell",
+            "command": "cmake --preset debug && cmake --build --preset debug -j6",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            }
+        },
+        {
+            "label": "Build (Debug, cmake CLI)",
+            "type": "shell",
+            "command": "cmake --build --preset debug -j6",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            }
+        },
+        {
+            "label": "Clean (Debug, cmake CLI)",
+            "type": "shell",
+            "command": "cmake --build --preset debug --target clean -j6",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            }
+        },
+        {
+            "label": "Build (RelWithDebInfo, cmake CLI)",
+            "type": "shell",
+            "command": "cmake --build --preset relwithdebinfo -j6",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            }
+        },
+        {
+            "label": "Clean (RelWithDebInfo, cmake CLI)",
+            "type": "shell",
+            "command": "cmake --build --preset relwithdebinfo --target clean -j6",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            }
+        },
+        {
+            "label": "Run Tests (Debug)",
+            "type": "shell",
+            "command": "./build-dbg/bin/minimesh_tests",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "dependsOn": "Build (Debug, cmake CLI)"
+        },
+        {
+            "type": "cmake",
+            "label": "CMake: build",
+            "command": "build",
+            "targets": [
+                "all"
+            ],
+            "preset": "debug",
+            "group": {
+                "kind": "build",
+            },
+            "problemMatcher": [],
+            "detail": "CMake template build task"
+        }
+    ]
 }

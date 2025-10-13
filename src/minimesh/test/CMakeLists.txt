@@ -4,6 +4,7 @@ add_executable(${TARGET_NAME}
   test_mesh_properties.cpp
   test_subdivision.cpp
   test_mesh_utils.cpp
+  test_QEM.cpp
 )
 
 # Link your core lib
@@ -34,3 +35,6 @@ set_tests_properties(minimesh.subdiv PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE
 
 add_test(NAME minimesh.utils  COMMAND ${TARGET_NAME} --test-case=*utils* --success)
 set_tests_properties(minimesh.utils  PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+add_test(NAME minimesh.qem  COMMAND ${TARGET_NAME} --test-case=*SymQuadric* --success)
+set_tests_properties(minimesh.qem  PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})

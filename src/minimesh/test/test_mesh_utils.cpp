@@ -47,9 +47,6 @@ TEST_CASE("Mesh utils - count_connected_components") {
     // Octopus mesh has 4 connected components (body + 3 separate pieces)
     REQUIRE(load_test_mesh(mesh, "mesh/octopus.obj"));
     int octopus_components = mohecore::analysis::count_connected_components(mesh);
-    MESSAGE("Octopus mesh has ", octopus_components, " connected components");
     INFO("Expected 4, got ", octopus_components);
     CHECK(octopus_components == 4);
-
-    MESSAGE("Connected components count completed");
 }
