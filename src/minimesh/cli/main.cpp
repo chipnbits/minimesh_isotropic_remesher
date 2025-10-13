@@ -119,35 +119,10 @@ int main(int argc, char **argv)
     return base + ".obj";
   };
 
-  // Now check that the mesh is sane and write it  in both 
-  // .vtk and .obj formats
-  check_sanity_and_write_mesh();
-
-  // Test edge division functionality
   printf("Total vertices: %d \n", mesh.n_active_vertices());
   printf("Total faces: %d \n", mesh.n_active_faces());
   printf("Total half-edges: %d \n", mesh.n_active_half_edges());
-
-  printf("dividing with subdivision\n");
-
-  auto start = std::chrono::high_resolution_clock::now();
-  modi.subdivide_loop();
-  modi.subdivide_loop();
-  modi.subdivide_loop();
-  modi.subdivide_loop();
-  modi.subdivide_loop();
-  modi.subdivide_loop();
-  modi.subdivide_loop();
-  modi.subdivide_loop();
-  auto end   = std::chrono::high_resolution_clock::now();
-
-  std::chrono::duration<double> elapsed = end - start;
-  printf("Subdivision took %.6f seconds\n", elapsed.count());
-
-  printf("Total vertices: %d \n", mesh.n_active_vertices());
-  printf("Total faces: %d \n", mesh.n_active_faces());
-  printf("Total half-edges: %d \n", mesh.n_active_half_edges());
-
-  check_sanity_and_write_mesh("subdivided_mesh");
+  
+  check_sanity_and_write_mesh("cli_mesh");
   return 0;
 } // end of main()

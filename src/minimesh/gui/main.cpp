@@ -220,7 +220,6 @@ int main(int argc, char * argv[])
 	// Change the hardcoded address to your needs.
 	if(argc == 1)
 	{
-		foldertools::makeandsetdir("D:/UBC/TA/2021Fall-524/code/CPSC524/mesh");
 		mohecore::Mesh_io(globalvars::mesh).read_auto("camel.obj");
 	}
 	else // otherwise use the address specified in the command line
