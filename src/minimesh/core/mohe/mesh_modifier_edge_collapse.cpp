@@ -1,10 +1,91 @@
 #include <minimesh/core/mohe/mesh_modifier_edge_collapse.hpp>
 #include <minimesh/core/util/assert.hpp>
+#include <cmath>
 
 namespace minimesh
 {
 namespace mohecore
 {
+
+//
+// SymQuadric implementations
+//
+
+SymQuadric::SymQuadric() { setZero(); }
+
+void SymQuadric::setZero() { q.fill(0.0); }
+
+SymQuadric& SymQuadric::operator+=(const SymQuadric& o) {
+	for (int i=0;i<10;++i) q[i] += o.q[i];
+	return *this;
+}
+
+SymQuadric operator+(SymQuadric a, const SymQuadric& b) {
+	a += b;
+	return a;
+}
+
+void SymQuadric::addPlane(const Eigen::Vector4d& p, double w) {
+	const double nx=p[0], ny=p[1], nz=p[2], d=p[3];
+	const double wnx = w*nx, wny = w*ny, wnz = w*nz, wd = w*d;
+	q[0]  += nx*wnx;          // a00
+	q[1]  += nx*wny;          // a01
+	q[2]  += nx*wnz;          // a02
+	q[3]  += nx*wd;           // a03
+	q[4]  += ny*wny;          // a11
+	q[5]  += ny*wnz;          // a12
+	q[6]  += ny*wd;           // a13
+	q[7]  += nz*wnz;          // a22
+	q[8]  += nz*wd;           // a23
+	q[9]  += d*wd;            // a33
+}
+
+double SymQuadric::eval(const Eigen::Vector3d& x) const {
+	// Unpack blocks
+	const double a00=q[0],  a01=q[1],  a02=q[2];
+	const double a11=q[4],  a12=q[5],  a22=q[7];
+	const double b0 = q[3], b1 = q[6], b2 = q[8];
+	const double c = q[9];
+
+	// x^T A x
+	const double xtAx =
+		x[0]*(a00*x[0] + 2.0*a01*x[1] + 2.0*a02*x[2]) +
+		x[1]*(a11*x[1] + 2.0*a12*x[2]) +
+		x[2]*(a22*x[2]);
+
+	// 2 b^T x + c
+	return xtAx + 2.0*(b0*x[0] + b1*x[1] + b2*x[2]) + c;
+}
+
+bool SymQuadric::solveMinimizer(Eigen::Vector3d& x) const {
+	// A
+	Eigen::Matrix3d A;
+	A << q[0], q[1], q[2],
+	     q[1], q[4], q[5],
+	     q[2], q[5], q[7];
+	// b
+	Eigen::Vector3d b(q[3], q[6], q[8]);
+
+	// Solve A x = -b with LDLT (fast, symmetric)
+	Eigen::LDLT<Eigen::Matrix3d> ldlt(A);
+	if (ldlt.info() != Eigen::Success) return false;
+
+	// crude conditioning guard
+	const double minDiag = ldlt.vectorD().minCoeff();
+	if (!(minDiag > 1e-12)) return false;
+
+	x = ldlt.solve(-b);
+	return ldlt.info() == Eigen::Success && x.allFinite();
+}
+
+Eigen::Matrix4d SymQuadric::toMatrix() const {
+	Eigen::Matrix4d M;
+	M << q[0], q[1], q[2], q[3],
+	     q[1], q[4], q[5], q[6],
+	     q[2], q[5], q[7], q[8],
+	     q[3], q[6], q[8], q[9];
+	return M;
+}
 
 
 //
@@ -114,6 +195,114 @@ bool Mesh_modifier_edge_collapse::flip_edge(const int he_index)
 	// operation successful
 	return true;
 } // All done
+
+
+//
+// Initialize quadric error matrices for all vertices
+// Traverses all faces and accumulates plane contributions to vertex quadrics
+//
+void Mesh_modifier_edge_collapse::initialize_quadrics()
+{
+	// Reset all quadrics to zero
+	for (auto& Q : _vertex_quadrics) {
+		Q.setZero();
+	}
+
+	// TODO: Traverse all faces in the mesh
+	// For each face:
+	//   1. Compute face normal and plane equation [nx, ny, nz, d]
+	//   2. Get all vertices of the face
+	//   3. Add the plane contribution to each vertex's quadric
+	//      using Q.addPlane(plane_vector, weight)
+
+	// Stub implementation - will be filled in with face traversal
+	int total_faces = mesh().n_total_faces();
+	(void)total_faces; // Suppress unused warning for now
+}
+
+
+//
+// Compute edge collapse metric for a given half-edge
+// Uses the square root of the origin vertex ID as the metric
+//
+float Mesh_modifier_edge_collapse::compute_edge_metric(Mesh_connectivity::Half_edge_iterator he)
+{
+	// Use square root of origin vertex index as metric
+	int vertex_id = he.origin().index();
+	return std::sqrt(static_cast<float>(vertex_id));
+}
+
+
+//
+// Initialize the priority queue with all edges in the mesh
+//
+void Mesh_modifier_edge_collapse::initialize_priority_queue()
+{
+	// Clear the priority queue
+	while (!_edge_pq.empty()) {
+		_edge_pq.pop();
+	}
+
+	// Create a boolean vector to track visited half-edges
+	int total_half_edges = mesh().n_total_half_edges();
+	std::vector<bool> visited(total_half_edges, false);
+
+	// Traverse all half-edges in the mesh
+	for (int he_id = 0; he_id < total_half_edges; ++he_id)
+	{
+		// Skip if already visited
+		if (visited[he_id]) {
+			continue;
+		}
+
+		// Get the half-edge iterator
+		Mesh_connectivity::Half_edge_iterator he = mesh().half_edge_at(he_id);
+
+		// Skip inactive half-edges
+		if (!he.is_active()) {
+			continue;
+		}
+
+		// Mark this half-edge and its twin as visited
+		visited[he_id] = true;
+		visited[he.twin().index()] = true;
+
+		// Compute the metric for this edge
+		float metric = compute_edge_metric(he);
+
+		// Add to priority queue
+		_edge_pq.push(std::make_pair(metric, he_id));
+	}
+
+	// Verify that PQ has exactly half the number of half-edges (one entry per full edge)
+	int expected_edges = mesh().n_active_half_edges() / 2;
+	int actual_edges = static_cast<int>(_edge_pq.size());
+	assert(expected_edges == actual_edges &&
+	       "Priority queue should contain exactly half the number of half-edges");
+}
+
+
+//
+// Get the top N candidates from the priority queue
+// Returns a vector of half-edge indices
+//
+std::vector<int> Mesh_modifier_edge_collapse::get_top_n_candidates(int n)
+{
+	std::vector<int> candidates;
+
+	// Make a copy of the priority queue so we don't modify the original
+	auto pq_copy = _edge_pq;
+
+	// Extract top N elements
+	for (int i = 0; i < n && !pq_copy.empty(); ++i)
+	{
+		auto top = pq_copy.top();
+		candidates.push_back(top.second); // second is the half-edge index
+		pq_copy.pop();
+	}
+
+	return candidates;
+}
 
 
 } // end of mohecore

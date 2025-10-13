@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <string>
 #include <chrono>
+#include <cmath>
 
 #include <minimesh/core/util/assert.hpp>
 #include <minimesh/core/util/macros.hpp>
@@ -17,6 +18,7 @@
 #include <minimesh/core/mohe/mesh_connectivity.hpp>
 #include <minimesh/core/mohe/mesh_io.hpp>
 #include <minimesh/core/mohe/mesh_modifier_loop_subdivision.hpp>
+#include <minimesh/core/mohe/mesh_modifier_edge_collapse.hpp>
 #include <minimesh/core/mohe/mesh_analysis.hpp>
 
 using namespace minimesh;
@@ -80,9 +82,9 @@ int main(int argc, char **argv)
   // Create a mesh_connectivity and a mesh reader
   mohecore::Mesh_connectivity mesh;
   mohecore::Mesh_io io(mesh);
-  mohecore::Mesh_modifier_loop_subdivision modi(mesh);
+  mohecore::Mesh_modifier_edge_collapse modi(mesh);
 
-  printf("=== MESH EDITTING EXAMPLE === \n");
+  printf("=== MESH EDGE COLLAPSE PRIORITY QUEUE TEST === \n");
 
   // Check if filename provided as argument
   std::string filename;
@@ -90,10 +92,8 @@ int main(int argc, char **argv)
     filename = argv[1];
     printf("Processing file: %s\n", filename.c_str());
   } else {
-    // Default behavior - write and use example mesh
-    printf("writing example_mesh.obj \n");
-    write_example_mesh();
-    filename = "./mesh/tetra.obj";
+    // Default behavior - use camel_simple.obj for testing
+    filename = "./mesh/camel_simple.obj";
     printf("No filename provided, using default: %s\n", filename.c_str());
   }
 
@@ -122,7 +122,34 @@ int main(int argc, char **argv)
   printf("Total vertices: %d \n", mesh.n_active_vertices());
   printf("Total faces: %d \n", mesh.n_active_faces());
   printf("Total half-edges: %d \n", mesh.n_active_half_edges());
-  
+
+  // Initialize quadrics for all vertices
+  printf("\n=== Initializing Quadrics === \n");
+  modi.initialize_quadrics();
+  printf("Quadrics initialized for all vertices.\n");
+
+  // Initialize the priority queue
+  printf("\n=== Initializing Priority Queue === \n");
+  modi.initialize_priority_queue();
+  printf("Priority queue initialized.\n");
+  printf("Verification: PQ has %d edges (should be half of %d half-edges)\n",
+         static_cast<int>(modi.get_top_n_candidates(mesh.n_active_half_edges()).size()),
+         mesh.n_active_half_edges());
+
+  // Get and print the top 10 candidates
+  printf("\n=== Top 10 Edge Collapse Candidates (sqrt of origin vertex ID) === \n");
+  std::vector<int> top_candidates = modi.get_top_n_candidates(10);
+
+  for (size_t i = 0; i < top_candidates.size(); ++i) {
+    int he_idx = top_candidates[i];
+    auto he = mesh.half_edge_at(he_idx);
+    int v_origin = he.origin().index();
+    float metric = std::sqrt(static_cast<float>(v_origin));
+    printf("Candidate %zu: Half-edge %d (vertex %d -> %d), metric=%.3f\n",
+           i + 1, he_idx, v_origin, he.dest().index(), metric);
+  }
+
+  printf("\n");
   check_sanity_and_write_mesh("cli_mesh");
   return 0;
 } // end of main()

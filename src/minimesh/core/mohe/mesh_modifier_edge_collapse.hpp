@@ -10,7 +10,13 @@
 
 
 #include <string>
+#include <queue>
+#include <vector>
+#include <map>
+#include <array>
+#include <limits>
 
+#include <Eigen/Dense>
 #include <minimesh/core/mohe/mesh_connectivity.hpp>
 
 namespace minimesh
@@ -18,12 +24,46 @@ namespace minimesh
 namespace mohecore
 {
 
+//
+// Symmetric 4x4 quadric matrix for Quadric Error Metric (QEM)
+// Stores only 10 unique entries due to symmetry
+//
+struct SymQuadric {
+	// 10 unique entries of symmetric 4x4 matrix in row-major "triangle" order
+	// [a00, a01, a02, a03, a11, a12, a13, a22, a23, a33]
+	std::array<double,10> q;
+
+	SymQuadric();
+	void setZero();
+
+	// Add another quadric (Q += other)
+	SymQuadric& operator+=(const SymQuadric& o);
+	friend SymQuadric operator+(SymQuadric a, const SymQuadric& b);
+
+	// Add a plane contribution w * (p p^T), where p = [nx, ny, nz, d], typically with unit normal
+	void addPlane(const Eigen::Vector4d& p, double w=1.0);
+
+	// Evaluate the QEM energy at x (3D point, homogeneous [x y z 1])
+	// cost(x) = x^T A x + 2 b^T x + c, with A 3x3 SPD-ish, b 3x1, c scalar
+	double eval(const Eigen::Vector3d& x) const;
+
+	// Solve A x = -b for the minimizer of the quadratic; returns true if A is PD enough.
+	// Falls back to 'false' if singular/ill-conditioned; caller should try endpoints/midpoint.
+	bool solveMinimizer(Eigen::Vector3d& x) const;
+
+	// Optional: materialize full 4x4 (rarely needed at runtime)
+	Eigen::Matrix4d toMatrix() const;
+};
+
 
 class Mesh_modifier_edge_collapse
 {
 public:
-	// Trivial constructor
-	Mesh_modifier_edge_collapse(Mesh_connectivity & mesh_in): _m(mesh_in) {}
+	// Constructor - allocates quadrics for all vertices
+	Mesh_modifier_edge_collapse(Mesh_connectivity & mesh_in): _m(mesh_in) {
+		// Allocate quadrics for all vertices (including inactive ones for consistent indexing)
+		_vertex_quadrics.resize(mesh_in.n_total_vertices());
+	}
 
 	// Get the underlying mesh
 	Mesh_connectivity & mesh() { return _m; }
@@ -46,10 +86,48 @@ public:
 	//
 	bool flip_edge(const int he_index);
 
+	//
+	// Initialize quadric error matrices for all vertices
+	// Traverses all faces and accumulates plane contributions to vertex quadrics
+	//
+	void initialize_quadrics();
+
+	//
+	// Initialize the priority queue with edge metrics for all edges in the mesh
+	//
+	void initialize_priority_queue();
+
+	//
+	// Get the top N edge candidates from the priority queue
+	// Returns a vector of half-edge indices
+	//
+	std::vector<int> get_top_n_candidates(int n);
 
 private:
+	// Priority queue entry: (metric, half_edge_index)
+	// We use greater<> for min-heap (smallest metric has highest priority)
+	using PQEntry = std::pair<float, int>;
+	struct ComparePQEntry {
+		bool operator()(const PQEntry& a, const PQEntry& b) const {
+			return a.first > b.first; // Min-heap: smaller metric = higher priority
+		}
+	};
+
 	// pointer to the mesh that we are working on.
 	Mesh_connectivity & _m;
+
+	// Priority queue for edge collapse candidates (min-heap based on metric)
+	std::priority_queue<PQEntry, std::vector<PQEntry>, ComparePQEntry> _edge_pq;
+
+	// Quadric error matrices for each vertex (indexed by vertex ID)
+	// One quadric per vertex, stores sum of planes from incident faces
+	std::vector<SymQuadric> _vertex_quadrics;
+
+	//
+	// Compute the collapse metric for a given edge
+	// Returns a float value where lower values indicate better collapse candidates
+	//
+	float compute_edge_metric(Mesh_connectivity::Half_edge_iterator he);
 };
 
 

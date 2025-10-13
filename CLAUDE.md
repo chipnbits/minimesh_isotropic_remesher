@@ -1,6 +1,18 @@
 # Minimesh Half-Edge Data Structure Reference
 
-This document provides a concise reference for the half-edge mesh data structure used in the minimesh library for mesh traversal and modification operations. Other details helpful for context are found in `minimesh_extension_guide.md`. The cli can be run directly with the meshcli command that has been sourced into terminal. The GUI likewise can be run with the meshgui command and filepath argument.
+This document provides a concise reference for the half-edge mesh data structure used in the minimesh library for mesh traversal and modification operations. Other details helpful for context are found in `minimesh_extension_guide.md`.
+
+## Running the Applications
+
+The CLI and GUI can be run using the following aliased commands in zsh/bash:
+
+- **CLI**: `meshcli <filepath>`
+  - Example: `meshcli ./mesh/camel_simple.obj`
+
+- **GUI**: `meshgui <filepath>`
+  - Example: `meshgui ./mesh/camel_simple.obj`
+
+These commands are already aliased in your shell environment and will execute the built binaries from the build directory.
 
 ## Core Data Structures
 
