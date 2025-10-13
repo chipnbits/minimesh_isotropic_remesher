@@ -25,8 +25,10 @@ set(SOURCE_FILES
   mohe/mesh_connectivity.cpp
   mohe/mesh_io.hpp
   mohe/mesh_io.cpp
-  mohe/mesh_modifier.hpp
-  mohe/mesh_modifier.cpp
+  mohe/mesh_modifier_loop_subdivision.hpp
+  mohe/mesh_modifier_loop_subdivision.cpp
+  mohe/mesh_modifier_edge_collapse.hpp
+  mohe/mesh_modifier_edge_collapse.cpp
   mohe/mesh_analysis.hpp
   mohe/mesh_analysis.cpp
  )

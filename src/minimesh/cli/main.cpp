@@ -16,7 +16,7 @@
 
 #include <minimesh/core/mohe/mesh_connectivity.hpp>
 #include <minimesh/core/mohe/mesh_io.hpp>
-#include <minimesh/core/mohe/mesh_modifier.hpp>
+#include <minimesh/core/mohe/mesh_modifier_loop_subdivision.hpp>
 #include <minimesh/core/mohe/mesh_analysis.hpp>
 
 using namespace minimesh;
@@ -80,7 +80,7 @@ int main(int argc, char **argv)
   // Create a mesh_connectivity and a mesh reader
   mohecore::Mesh_connectivity mesh;
   mohecore::Mesh_io io(mesh);
-  mohecore::Mesh_modifier modi(mesh);
+  mohecore::Mesh_modifier_loop_subdivision modi(mesh);
 
   printf("=== MESH EDITTING EXAMPLE === \n");
 

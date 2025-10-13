@@ -1,6 +1,6 @@
 #include <cmath>
 #include <minimesh/core/mohe/mesh_analysis.hpp>
-#include <minimesh/core/mohe/mesh_modifier.hpp>
+#include <minimesh/core/mohe/mesh_modifier_loop_subdivision.hpp>
 #include <minimesh/core/util/assert.hpp>
 #include <queue>
 #include <unordered_map>
@@ -57,7 +57,7 @@ coeffs_for_valence(int n)
 // Returns -1 if no half-edge exists between the two vertices.
 //
 int
-Mesh_modifier::get_halfedge_between_vertices(const int v0, const int v1)
+Mesh_modifier_loop_subdivision::get_halfedge_between_vertices(const int v0, const int v1)
 {
   // Get a ring iterator for v0
   Mesh_connectivity::Vertex_ring_iterator ring_iter = mesh().vertex_ring_at(v0);
@@ -89,7 +89,7 @@ Mesh_modifier::get_halfedge_between_vertices(const int v0, const int v1)
 }
 
 bool
-Mesh_modifier::flip_edge(const int he_index)
+Mesh_modifier_loop_subdivision::flip_edge(const int he_index)
 {
   //
   // Take a reference to all involved entities
@@ -162,7 +162,7 @@ Mesh_modifier::flip_edge(const int he_index)
 } // All done
 
 int
-Mesh_modifier::divide_edge(const int he_index, const double weight)
+Mesh_modifier_loop_subdivision::divide_edge(const int he_index, const double weight)
 {
   // Validate input index
   if(he_index < 0 || he_index >= mesh().n_total_half_edges())
@@ -249,7 +249,7 @@ Mesh_modifier::divide_edge(const int he_index, const double weight)
 }
 
 bool
-Mesh_modifier::subdivide_loop()
+Mesh_modifier_loop_subdivision::subdivide_loop()
 {
   // Calidate mesh
   assert(mesh().check_sanity_slowly());
@@ -360,7 +360,7 @@ Mesh_modifier::subdivide_loop()
 //   (0)-----(1)------(2)
 //
 bool
-Mesh_modifier::subdivide_face(Mesh_connectivity::Face_iterator & face, const std::vector<int> & edge_midpoint_vertices)
+Mesh_modifier_loop_subdivision::subdivide_face(Mesh_connectivity::Face_iterator & face, const std::vector<int> & edge_midpoint_vertices)
 {
 
   for(int v : edge_midpoint_vertices)
@@ -452,7 +452,7 @@ Mesh_modifier::subdivide_face(Mesh_connectivity::Face_iterator & face, const std
 
 
 void
-Mesh_modifier::loop_update_old_vertices(Mesh_connectivity & original_mesh,
+Mesh_modifier_loop_subdivision::loop_update_old_vertices(Mesh_connectivity & original_mesh,
     const std::vector<int> & original_active_vertex_ids)
 {
   // Find the umbrella of neighbors using the ring iterator

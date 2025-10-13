@@ -4,7 +4,7 @@
 #include <Eigen/Core>
 #include <minimesh/core/mohe/mesh_connectivity.hpp>
 #include <minimesh/core/mohe/mesh_io.hpp>
-#include <minimesh/core/mohe/mesh_modifier.hpp>
+#include <minimesh/core/mohe/mesh_modifier_loop_subdivision.hpp>
 
 #include <iostream>
 #include <string>
@@ -120,7 +120,7 @@ TEST_CASE("Cube topology properties") {
 
 TEST_CASE("Edge flip operation") {
     mohecore::Mesh_connectivity mesh;
-    mohecore::Mesh_modifier modifier(mesh);
+    mohecore::Mesh_modifier_loop_subdivision modifier(mesh);
     REQUIRE(load_test_mesh(mesh, "mesh/cube.obj"));
 
     const int V0 = mesh.n_active_vertices();
@@ -161,7 +161,7 @@ TEST_CASE("Multiple meshes load & basic validation") {
 
 TEST_CASE("Template transform (placeholder)") {
     mohecore::Mesh_connectivity mesh;
-    mohecore::Mesh_modifier modifier(mesh);
+    mohecore::Mesh_modifier_loop_subdivision modifier(mesh);
     REQUIRE(load_test_mesh(mesh, "mesh/cube.obj"));
     // Template test - add your transform validation here
     CHECK(mesh.n_active_vertices() > 0); // Basic validation

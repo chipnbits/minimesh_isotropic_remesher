@@ -1,9 +1,9 @@
 #pragma once
 
 //
-// mesh_modifier.hpp
+// mesh_modifier_loop_subdivision.hpp
 //
-// Some functionality for modifying meshes.
+// Loop subdivision mesh modifier.
 //
 // Author: Shayan Hoshyari
 //
@@ -19,11 +19,11 @@ namespace mohecore
 {
 
 
-class Mesh_modifier
+class Mesh_modifier_loop_subdivision
 {
 public:
   // Trivial constructor
-  Mesh_modifier(Mesh_connectivity & mesh_in)
+  Mesh_modifier_loop_subdivision(Mesh_connectivity & mesh_in)
   : _m(mesh_in)
   {
   }

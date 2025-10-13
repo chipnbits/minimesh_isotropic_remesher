@@ -3,7 +3,7 @@
 #include <Eigen/Core>
 #include <minimesh/core/mohe/mesh_connectivity.hpp>
 #include <minimesh/core/mohe/mesh_io.hpp>
-#include <minimesh/core/mohe/mesh_modifier.hpp>
+#include <minimesh/core/mohe/mesh_modifier_loop_subdivision.hpp>
 
 #include <iostream>
 #include <string>
@@ -66,7 +66,7 @@ TEST_CASE("Subdivision basic setup") {
 
 TEST_CASE("Triangle edge division test") {
     mohecore::Mesh_connectivity mesh;
-    mohecore::Mesh_modifier modifier(mesh);
+    mohecore::Mesh_modifier_loop_subdivision modifier(mesh);
 
     // Create a simple triangle mesh programmatically
     std::vector<double> xyz = {
@@ -126,7 +126,7 @@ TEST_CASE("Triangle edge division test") {
 
 TEST_CASE("Weighted edge division test") {
     mohecore::Mesh_connectivity mesh;
-    mohecore::Mesh_modifier modifier(mesh);
+    mohecore::Mesh_modifier_loop_subdivision modifier(mesh);
 
     // Create a simple triangle mesh
     std::vector<double> xyz = {
@@ -175,7 +175,7 @@ TEST_CASE("Weighted edge division test") {
 
 TEST_CASE("Edge division edge cases") {
     mohecore::Mesh_connectivity mesh;
-    mohecore::Mesh_modifier modifier(mesh);
+    mohecore::Mesh_modifier_loop_subdivision modifier(mesh);
 
     // Create a simple triangle mesh
     std::vector<double> xyz = {
@@ -234,7 +234,7 @@ TEST_CASE("Loop subdivision mesh properties") {
             CAPTURE(F_orig);
 
             // Apply Loop subdivision
-            mohecore::Mesh_modifier modifier(mesh);
+            mohecore::Mesh_modifier_loop_subdivision modifier(mesh);
             bool success = modifier.subdivide_loop();
             REQUIRE(success);
 
@@ -271,7 +271,7 @@ TEST_CASE("Loop subdivision mesh properties") {
 
 TEST_CASE("Loop subdivision properties - simple triangle") {
     mohecore::Mesh_connectivity mesh;
-    mohecore::Mesh_modifier modifier(mesh);
+    mohecore::Mesh_modifier_loop_subdivision modifier(mesh);
 
     // Create a simple triangle mesh
     std::vector<double> xyz = {
@@ -429,7 +429,7 @@ TEST_CASE("Loop subdivision regression test - camel mesh") {
          << reference_mesh.n_active_faces() << " faces");
 
     // Apply Loop subdivision to the original mesh
-    mohecore::Mesh_modifier modifier(original_mesh);
+    mohecore::Mesh_modifier_loop_subdivision modifier(original_mesh);
     bool success = modifier.subdivide_loop();
     REQUIRE(success);
 

@@ -10,7 +10,7 @@
 
 // core
 #include <minimesh/core/mohe/mesh_connectivity.hpp>
-#include <minimesh/core/mohe/mesh_modifier.hpp>
+#include <minimesh/core/mohe/mesh_modifier_loop_subdivision.hpp>
 #include <minimesh/core/mohe/mesh_io.hpp>
 #include <minimesh/core/util/assert.hpp>
 #include <minimesh/core/util/foldertools.hpp>
@@ -152,7 +152,7 @@ void subdivide_pressed(int)
 	printf("Subdivide button was pressed \n");
 
 	// Create a mesh modifier for the global mesh
-	mohecore::Mesh_modifier modifier(globalvars::mesh);
+	mohecore::Mesh_modifier_loop_subdivision modifier(globalvars::mesh);
 
 	// Perform Loop subdivision (modifies mesh in-place)
 	bool success = modifier.subdivide_loop();
@@ -220,7 +220,9 @@ int main(int argc, char * argv[])
 	// Change the hardcoded address to your needs.
 	if(argc == 1)
 	{
-		mohecore::Mesh_io(globalvars::mesh).read_auto("camel.obj");
+		// retrieve filepath of /home/sghys/projects/CPSC524-modeling/mesh/tetra_complex.obj
+
+		mohecore::Mesh_io(globalvars::mesh).read_auto("/home/sghys/projects/CPSC524-modeling/mesh/tetra_complex.obj");
 	}
 	else // otherwise use the address specified in the command line
 	{
