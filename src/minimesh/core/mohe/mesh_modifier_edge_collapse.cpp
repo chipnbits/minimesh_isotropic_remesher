@@ -232,16 +232,61 @@ Mesh_modifier_edge_collapse::initialize_quadrics()
     Q.setZero();
   }
 
-  // TODO: Traverse all faces in the mesh
-  // For each face:
-  //   1. Compute face normal and plane equation [nx, ny, nz, d]
-  //   2. Get all vertices of the face
-  //   3. Add the plane contribution to each vertex's quadric
-  //      using Q.addPlane(plane_vector, weight)
-
-  // Stub implementation - will be filled in with face traversal
   int total_faces = mesh().n_total_faces();
-  (void)total_faces; // Suppress unused warning for now
+  for (int f_id = 0; f_id < total_faces; ++f_id)
+  {
+    // Get face iterator
+    Mesh_connectivity::Face_iterator f = mesh().face_at(f_id);
+
+    // Skip inactive faces
+    if(!f.is_active())
+      continue;
+
+    // Get half-edge of the face
+    Mesh_connectivity::Half_edge_iterator he = f.half_edge();
+
+    // Collect vertices of the face
+    std::vector<Mesh_connectivity::Vertex_iterator> face_vertices;
+    do
+    {
+      if (he.origin().is_active())
+      {
+        face_vertices.push_back(he.origin());
+      }
+      he = he.next();
+    } while(he.index() != f.half_edge().index());
+
+    // assert all faces triangular or throw an error
+    if(face_vertices.size() != 3)
+    {
+      throw std::runtime_error("Non-triangular face encountered in initialize_quadrics(). Only triangular meshes are supported.");
+    }
+
+    // Compute face normal using cross product
+    Eigen::Vector3d v0 = face_vertices[0].xyz();
+    Eigen::Vector3d v1 = face_vertices[1].xyz();
+    Eigen::Vector3d v2 = face_vertices[2].xyz();
+    Eigen::Vector3d normal = (v1 - v0).cross(v2 - v0);
+    normal.normalize();
+
+    // nx * x + ny * y + nz * z + d = 0  =>  d = - (nx*x0 + ny*y0 + nz*z0)
+    double d = -normal.dot(v0);
+    // Full Kp vector for planar face
+    Eigen::Vector4d plane_vector(normal[0], normal[1], normal[2], d);
+
+    // Add plane contribution to each vertex's quadric
+    for(auto & v : face_vertices)
+    {
+      int v_index = v.index();
+      _vertex_quadrics[v_index].addPlane(plane_vector);
+    }
+  }
+}
+
+void 
+Mesh_modifier_edge_collapse::initialize_valid_pairs()
+{
+  
 }
 
 

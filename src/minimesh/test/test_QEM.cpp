@@ -1,6 +1,7 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <minimesh/core/mohe/mesh_modifier_edge_collapse.hpp>
+#include <minimesh/core/mohe/mesh_io.hpp>
 
 #include <iostream>
 
@@ -20,6 +21,18 @@ Eigen::Vector4d make_plane(double nx, double ny, double nz, double d) {
 // Helper to create a full 4x4 matrix from outer product of plane vector
 Eigen::Matrix4d plane_outer_product(const Eigen::Vector4d& p) {
     return p * p.transpose();
+}
+
+// Helper to load mesh from file
+bool load_test_mesh(Mesh_connectivity& mesh, const std::string& filename) {
+    Mesh_io io(mesh);
+    try {
+        io.read_obj_general(filename);
+        return mesh.check_sanity_slowly(false);
+    } catch (...) {
+        std::cerr << "Failed to load mesh: " << filename << std::endl;
+        return false;
+    }
 }
 
 } // anonymous namespace
@@ -480,5 +493,54 @@ TEST_CASE("SymQuadric: Associative property of addition") {
 
     for (int i = 0; i < 10; ++i) {
         CHECK(Qa.q[i] == doctest::Approx(Qb.q[i]));
+    }
+}
+
+TEST_CASE("Mesh_modifier_edge_collapse: initialize_quadrics on tetrahedron") {
+    // Load the tetrahedron mesh
+    Mesh_connectivity mesh;
+    REQUIRE(load_test_mesh(mesh, "mesh/tetra.obj"));
+
+    // Verify basic mesh properties
+    INFO("Loaded tetrahedron: V=", mesh.n_active_vertices(),
+         " F=", mesh.n_active_faces(),
+         " HE=", mesh.n_active_half_edges());
+
+    CHECK(mesh.n_active_vertices() == 4);
+    CHECK(mesh.n_active_faces() == 4);
+    CHECK(mesh.check_sanity_slowly(false));
+
+    // Create modifier and initialize quadrics
+    Mesh_modifier_edge_collapse modifier(mesh);
+
+    // This should not throw an exception
+    REQUIRE_NOTHROW(modifier.initialize_quadrics());
+
+    // After initialization, mesh should still be valid
+    CHECK(mesh.check_sanity_slowly(false));
+    CHECK(mesh.n_active_vertices() == 4);
+    CHECK(mesh.n_active_faces() == 4);
+
+    // Print some information about the mesh for verification
+    INFO("Tetrahedron vertices:");
+    for (int i = 0; i < mesh.n_total_vertices(); ++i) {
+        auto v = mesh.vertex_at(i);
+        if (v.is_active()) {
+            auto xyz = v.xyz();
+            INFO("  v", i, ": (", xyz[0], ", ", xyz[1], ", ", xyz[2], ")");
+        }
+    }
+
+    // Print out all the results of the quadrics in matrix form for each vertex
+    INFO("Vertex quadrics:");
+    for (int i = 0; i < mesh.n_total_vertices(); ++i) {
+        auto v = mesh.vertex_at(i);
+        if (v.is_active()) {
+            auto Q = modifier.vertex_quadric(i);
+            Eigen::Matrix4d M = Q.toMatrix();
+            MESSAGE("  Q for v", i, ":\n", M);
+            MESSAGE(" Vertex location: ", v.xyz().transpose());
+            MESSAGE("Vertex quadric evaluation at vertex position: ", Q.evalMul_xt_Q_x(v.xyz()));
+        }
     }
 }

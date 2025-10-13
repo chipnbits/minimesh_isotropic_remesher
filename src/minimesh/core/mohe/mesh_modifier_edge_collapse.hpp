@@ -104,6 +104,13 @@ public:
   //
   void initialize_quadrics();
 
+  // Retrieve the quadric for a given vertex
+  SymQuadric & vertex_quadric(int v_id) { return _vertex_quadrics[v_id]; }
+  const SymQuadric & vertex_quadric(int v_id) const { return _vertex_quadrics[v_id]; }
+
+  // Initialize valid pairs for edge collapse
+  void initialize_valid_pairs();
+
   //
   // Initialize the priority queue with edge metrics for all edges in the mesh
   //
