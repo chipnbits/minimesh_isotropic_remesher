@@ -13,6 +13,7 @@
 #include <limits>
 #include <map>
 #include <queue>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -69,6 +70,55 @@ struct SymQuadric
 class Mesh_modifier_edge_collapse
 {
 public:
+  // Vertex pair representation (public so it can be used in API)
+  // Always stores v1 < v2 for canonical ordering
+  struct VertexPair
+  {
+    int v1, v2;
+
+    VertexPair(int a, int b)
+    : v1(std::min(a, b))
+    , v2(std::max(a, b))
+    {
+    }
+
+    bool operator<(const VertexPair & other) const { return (v1 < other.v1) || (v1 == other.v1 && v2 < other.v2); }
+
+    bool operator==(const VertexPair & other) const { return v1 == other.v1 && v2 == other.v2; }
+  };
+
+  // Heap entry for the priority queue
+  struct MergeCandidate
+  {
+    double error;
+    VertexPair pair;
+    Eigen::Vector3d x_opt;
+    int version; // For lazy deletion
+
+    // Default constructor
+    MergeCandidate()
+    : error(0.0)
+    , pair(0, 0)
+    , x_opt(Eigen::Vector3d::Zero())
+    , version(0)
+    {
+    }
+
+    // Parameterized constructor
+    MergeCandidate(double e, VertexPair p, Eigen::Vector3d x, int v)
+    : error(e)
+    , pair(p)
+    , x_opt(x)
+    , version(v)
+    {
+    }
+
+    bool operator>(const MergeCandidate & other) const
+    {
+      return error > other.error; // For min-heap
+    }
+  };
+
   // Constructor - allocates quadrics for all vertices
   Mesh_modifier_edge_collapse(Mesh_connectivity & mesh_in)
   : _m(mesh_in)
@@ -88,33 +138,27 @@ public:
   int get_halfedge_between_vertices(const int v0, const int v1);
 
   //
-  // Flip an edge in a mesh
-  // Input: The mesh, and the index of a half-edge on the edge we wish to flip
-  // Return true if operation successful, and false if operation not possible
+  // Initialize the mesh simplifier to the current state of the mesh
+  // This computes quadrics for all vertices and builds the initial set of valid pairs
+  // Call this after construction or whenever you need to reset the simplifier
   //
-  // Assumption: mesh is all triangles
-  //
-  // NOTE: To see how this method works, take a look at edge-flip.svg
-  //
-  bool flip_edge(const int he_index);
-
-  //
-  // Initialize quadric error matrices for all vertices
-  // Traverses all faces and accumulates plane contributions to vertex quadrics
-  //
-  void initialize_quadrics();
+  void initialize();
 
   // Retrieve the quadric for a given vertex
   SymQuadric & vertex_quadric(int v_id) { return _vertex_quadrics[v_id]; }
   const SymQuadric & vertex_quadric(int v_id) const { return _vertex_quadrics[v_id]; }
 
-  // Initialize valid pairs for edge collapse
-  void initialize_valid_pairs();
+  // Add or update a pair in the valid pairs structure
+  // If pair exists, updates its error and adds new entry to heap
+  void add_or_update_pair(int v1, int v2);
 
-  //
-  // Initialize the priority queue with edge metrics for all edges in the mesh
-  //
-  void initialize_priority_queue();
+  // Get the next best pair to collapse (minimum error)
+  // Returns true if a valid pair exists, false if heap is empty
+  // Automatically skips stale heap entries
+  bool get_min_pair(MergeCandidate & top);
+
+  // Get all pairs containing a specific vertex (returns copies for safe iteration)
+  std::set<VertexPair> get_all_pairs_from_vertex(int vertex_id);
 
   //
   // Get the top N edge candidates from the priority queue
@@ -122,33 +166,35 @@ public:
   //
   std::vector<int> get_top_n_candidates(int n);
 
-private:
-  // Priority queue entry: (metric, half_edge_index)
-  // We use greater<> for min-heap (smallest metric has highest priority)
-  using PQEntry = std::pair<float, int>;
-  struct ComparePQEntry
-  {
-    bool operator()(const PQEntry & a, const PQEntry & b) const
-    {
-      return a.first > b.first; // Min-heap: smaller metric = higher priority
-    }
-  };
+  // Testing helper: invalidate a pair by incrementing its version WITHOUT adding to heap
+  // This makes all heap entries for this pair stale
+  void invalidate_pair_for_testing(int v1, int v2);
 
+private:
   // pointer to the mesh that we are working on.
   Mesh_connectivity & _m;
-
-  // Priority queue for edge collapse candidates (min-heap based on metric)
-  std::priority_queue<PQEntry, std::vector<PQEntry>, ComparePQEntry> _edge_pq;
 
   // Quadric error matrices for each vertex (indexed by vertex ID)
   // One quadric per vertex, stores sum of planes from incident faces
   std::vector<SymQuadric> _vertex_quadrics;
 
   //
-  // Compute the collapse metric for a given edge
-  // Returns a float value where lower values indicate better collapse candidates
+  // Initialize quadric error matrices for all vertices
+  // Traverses all faces and accumulates plane contributions to vertex quadrics
   //
-  float compute_edge_metric(Mesh_connectivity::Half_edge_iterator he);
+  void initialize_quadrics();
+
+  // Initialize valid pairs for edge collapse
+  void initialize_valid_pairs();
+
+  //
+  // Valid pairs data structure
+  //
+  // Min-heap ordered by error metric (supports lazy deletion via versions)
+  std::priority_queue<MergeCandidate, std::vector<MergeCandidate>, std::greater<MergeCandidate>> _pair_heap;
+
+  // Version tracking for lazy deletion in heap
+  std::map<VertexPair, int> _pair_versions;
 };
 
 

@@ -14,6 +14,9 @@ The CLI and GUI can be run using the following aliased commands in zsh/bash:
 
 These commands are already aliased in your shell environment and will execute the built binaries from the build directory.
 
+## Compile Instructions
+Always use the tasks.json tasks in VSCode to build the project. 
+
 ## Core Data Structures
 
 ### Vertex_data

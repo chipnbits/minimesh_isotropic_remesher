@@ -1,7 +1,8 @@
 #include <cmath>
+#include <iostream> // For debug output
 #include <minimesh/core/mohe/mesh_modifier_edge_collapse.hpp>
 #include <minimesh/core/util/assert.hpp>
-#include <iostream> // For debug output
+#include <set>
 
 namespace minimesh
 {
@@ -92,7 +93,7 @@ SymQuadric::solveMinimizer(Eigen::Vector3d & x) const
 
   // Robust 3x3 solve and check for invertibility with LU decomposition
   Eigen::FullPivLU<Eigen::Matrix3d> lu(A);
-  if (!lu.isInvertible() || lu.rcond() < 1e-15) // Tolerance for numerical stability
+  if(!lu.isInvertible() || lu.rcond() < 1e-15) // Tolerance for numerical stability
     return false;
 
   x = lu.solve(-b);
@@ -144,80 +145,23 @@ Mesh_modifier_edge_collapse::get_halfedge_between_vertices(const int v0, const i
   return answer;
 }
 
-
-bool
-Mesh_modifier_edge_collapse::flip_edge(const int he_index)
+//
+// Initialize the mesh simplifier to the current state of the mesh
+//
+void
+Mesh_modifier_edge_collapse::initialize()
 {
-  //
-  // Take a reference to all involved entities
-  //
+  _vertex_quadrics.resize(mesh().n_total_vertices());
+  _pair_versions.clear();
+  while(!_pair_heap.empty())
+    _pair_heap.pop();
 
-  // HALF-EDGES
-  Mesh_connectivity::Half_edge_iterator he0 = mesh().half_edge_at(he_index);
-  Mesh_connectivity::Half_edge_iterator he1 = he0.twin();
+  // First compute quadrics for all vertices
+  initialize_quadrics();
 
-  // meshes on the boundary are not flippable
-  if(he0.face().is_equal(mesh().hole()) || he1.face().is_equal(mesh().hole()))
-  {
-    return false;
-  }
-
-  Mesh_connectivity::Half_edge_iterator he2 = he0.next();
-  Mesh_connectivity::Half_edge_iterator he3 = he2.next();
-  Mesh_connectivity::Half_edge_iterator he4 = he1.next();
-  Mesh_connectivity::Half_edge_iterator he5 = he4.next();
-
-  // VERTICES
-  Mesh_connectivity::Vertex_iterator v0 = he1.origin();
-  Mesh_connectivity::Vertex_iterator v1 = he0.origin();
-  Mesh_connectivity::Vertex_iterator v2 = he3.origin();
-  Mesh_connectivity::Vertex_iterator v3 = he5.origin();
-
-  // FACES
-  Mesh_connectivity::Face_iterator f0 = he0.face();
-  Mesh_connectivity::Face_iterator f1 = he1.face();
-
-  //
-  // Now modify the connectivity
-  //
-
-  // HALF-EDGES
-  he0.data().next = he3.index();
-  he0.data().prev = he4.index();
-  he0.data().origin = v3.index();
-  //
-  he1.data().next = he5.index();
-  he1.data().prev = he2.index();
-  he1.data().origin = v2.index();
-  //
-  he2.data().next = he1.index();
-  he2.data().prev = he5.index();
-  he2.data().face = f1.index();
-  //
-  he3.data().next = he4.index();
-  he3.data().prev = he0.index();
-  //
-  he4.data().next = he0.index();
-  he4.data().prev = he3.index();
-  he4.data().face = f0.index();
-  //
-  he5.data().next = he2.index();
-  he5.data().prev = he1.index();
-
-  // VERTICES
-  v0.data().half_edge = he2.index();
-  v1.data().half_edge = he4.index();
-  v2.data().half_edge = he1.index();
-  v3.data().half_edge = he0.index();
-
-  // FACES
-  f0.data().half_edge = he0.index();
-  f1.data().half_edge = he1.index();
-
-  // operation successful
-  return true;
-} // All done
-
+  // Then build the initial set of valid pairs based on the quadrics
+  initialize_valid_pairs();
+}
 
 //
 // Initialize quadric error matrices for all vertices
@@ -233,7 +177,7 @@ Mesh_modifier_edge_collapse::initialize_quadrics()
   }
 
   int total_faces = mesh().n_total_faces();
-  for (int f_id = 0; f_id < total_faces; ++f_id)
+  for(int f_id = 0; f_id < total_faces; ++f_id)
   {
     // Get face iterator
     Mesh_connectivity::Face_iterator f = mesh().face_at(f_id);
@@ -249,7 +193,7 @@ Mesh_modifier_edge_collapse::initialize_quadrics()
     std::vector<Mesh_connectivity::Vertex_iterator> face_vertices;
     do
     {
-      if (he.origin().is_active())
+      if(he.origin().is_active())
       {
         face_vertices.push_back(he.origin());
       }
@@ -259,7 +203,8 @@ Mesh_modifier_edge_collapse::initialize_quadrics()
     // assert all faces triangular or throw an error
     if(face_vertices.size() != 3)
     {
-      throw std::runtime_error("Non-triangular face encountered in initialize_quadrics(). Only triangular meshes are supported.");
+      throw std::runtime_error(
+          "Non-triangular face encountered in initialize_quadrics(). Only triangular meshes are supported.");
     }
 
     // Compute face normal using cross product
@@ -283,99 +228,134 @@ Mesh_modifier_edge_collapse::initialize_quadrics()
   }
 }
 
-void 
+void
 Mesh_modifier_edge_collapse::initialize_valid_pairs()
 {
-  
-}
 
-
-//
-// Compute edge collapse metric for a given half-edge
-// Uses the square root of the origin vertex ID as the metric
-//
-float
-Mesh_modifier_edge_collapse::compute_edge_metric(Mesh_connectivity::Half_edge_iterator he)
-{
-  // Use square root of origin vertex index as metric
-  int vertex_id = he.origin().index();
-  return std::sqrt(static_cast<float>(vertex_id));
-}
-
-
-//
-// Initialize the priority queue with all edges in the mesh
-//
-void
-Mesh_modifier_edge_collapse::initialize_priority_queue()
-{
-  // Clear the priority queue
-  while(!_edge_pq.empty())
-  {
-    _edge_pq.pop();
-  }
-
-  // Create a boolean vector to track visited half-edges
+  // Track visited half-edges to avoid duplicates
   int total_half_edges = mesh().n_total_half_edges();
   std::vector<bool> visited(total_half_edges, false);
 
-  // Traverse all half-edges in the mesh
+  // Traverse all half-edges to find unique edges
   for(int he_id = 0; he_id < total_half_edges; ++he_id)
   {
     // Skip if already visited
     if(visited[he_id])
-    {
       continue;
-    }
 
     // Get the half-edge iterator
     Mesh_connectivity::Half_edge_iterator he = mesh().half_edge_at(he_id);
 
     // Skip inactive half-edges
     if(!he.is_active())
-    {
       continue;
-    }
 
     // Mark this half-edge and its twin as visited
     visited[he_id] = true;
     visited[he.twin().index()] = true;
 
-    // Compute the metric for this edge
-    float metric = compute_edge_metric(he);
+    // Get the two vertices of this edge
+    int v1 = he.origin().index();
+    int v2 = he.dest().index();
 
-    // Add to priority queue
-    _edge_pq.push(std::make_pair(metric, he_id));
+    // Add to data structures (creates canonical pair internally)
+    add_or_update_pair(v1, v2);
   }
-
-  // Verify that PQ has exactly half the number of half-edges (one entry per full edge)
-  int expected_edges = mesh().n_active_half_edges() / 2;
-  int actual_edges = static_cast<int>(_edge_pq.size());
-  assert(expected_edges == actual_edges && "Priority queue should contain exactly half the number of half-edges");
 }
 
+//
+// Add or update a pair in the valid pairs structure
+// Fetches Q1 and Q2, computes x_opt and error, then packages into a versioned heap entry
+//
+void
+Mesh_modifier_edge_collapse::add_or_update_pair(int v1, int v2)
+{
+  // Create canonical pair (always v1 < v2)
+  VertexPair pair(v1, v2);
+
+  // Compute combined quadric error and the optimal position
+  SymQuadric Q = _vertex_quadrics[v1] + _vertex_quadrics[v2];
+  double error = Q.evalMul_xt_Q_x(Eigen::Vector3d::Zero());
+  Eigen::Vector3d x_opt = Eigen::Vector3d::Zero();
+  if(!Q.solveMinimizer(x_opt))
+  {
+    // Fallback to midpoint if minimizer is not valid
+    Eigen::Vector3d p1 = mesh().vertex_at(v1).xyz();
+    Eigen::Vector3d p2 = mesh().vertex_at(v2).xyz();
+    x_opt = 0.5 * (p1 + p2);
+  }
+  error = Q.evalMul_xt_Q_x(x_opt);
+
+  // Increment versioning for heap invalidation of old entries
+  _pair_versions[pair]++;
+
+  // Add to heap with new version
+  MergeCandidate entry{error, pair, x_opt, _pair_versions[pair]};
+  _pair_heap.push(entry);
+}
+
+// Get the next best pair to collapse (minimum error)
+bool
+Mesh_modifier_edge_collapse::get_min_pair(MergeCandidate & top)
+{
+  // Pop stale entries until we find a valid one
+  while(!_pair_heap.empty())
+  {
+    top = _pair_heap.top();
+    _pair_heap.pop();
+
+    // Check if this entry is still valid
+    if(_pair_versions[top.pair] == top.version)
+    {
+      // Valid entry found
+      return true;
+    }
+    // Otherwise, this is a stale entry - continue to next
+  }
+
+  // Heap is empty or all entries are stale
+  return false;
+}
 
 //
-// Get the top N candidates from the priority queue
-// Returns a vector of half-edge indices
+// Get all pairs containing a specific vertex
 //
+std::set<Mesh_modifier_edge_collapse::VertexPair>
+Mesh_modifier_edge_collapse::get_all_pairs_from_vertex(int vertex_id)
+{
+  // Use a ring iterator to find all incident half-edges
+  std::set<VertexPair> pairs;
+  Mesh_connectivity::Vertex_ring_iterator ring_iter = mesh().vertex_ring_at(vertex_id);
+  do
+  {
+    auto he = ring_iter.half_edge();
+    int v1 = he.origin().index();
+    int v2 = he.dest().index();
+    pairs.insert(VertexPair(v1, v2));
+  } while(ring_iter.advance());
+  return pairs;
+}
+
+/// Get the top N candidates from the priority queue
+/// Returns a vector of half-edge indices
+///
 std::vector<int>
 Mesh_modifier_edge_collapse::get_top_n_candidates(int n)
 {
   std::vector<int> candidates;
-
-  // Make a copy of the priority queue so we don't modify the original
-  auto pq_copy = _edge_pq;
-
-  // Extract top N elements
-  for(int i = 0; i < n && !pq_copy.empty(); ++i)
-  {
-    auto top = pq_copy.top();
-    candidates.push_back(top.second); // second is the half-edge index
-    pq_copy.pop();
-  }
+  // TODO: Implement
 
   return candidates;
+}
+
+//
+// Testing helper: invalidate a pair by incrementing its version WITHOUT adding to heap
+//
+void
+Mesh_modifier_edge_collapse::invalidate_pair_for_testing(int v1, int v2)
+{
+  VertexPair pair(v1, v2);
+  _pair_versions[pair]++;
 }
 
 

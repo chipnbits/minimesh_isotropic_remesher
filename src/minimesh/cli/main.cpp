@@ -33,47 +33,47 @@ namespace  // Mark the start of anonymous namespace (cant be called from outside
 //
 // Create an example mesh file that we can read later.
 //
-void
-write_example_mesh()
-{
-  FILE *fl = fopen("exports/example_mesh.obj", "w");
+// void
+// write_example_mesh()
+// {
+//   FILE *fl = fopen("exports/example_mesh.obj", "w");
 
-  //
-  //
-  //  (6) ----- (7) --- (8) 
-  //   |\      / \      /|
-  //   | \    /   \    / |
-  //   |  \  /     \  /  |
-  //   |   (4)------(5)  |
-  //   |   / \      / \  |
-  //   |  /   \    /   \ |
-  //   | /     \  /     \|
-  //   (1)----(2)------(3)
-  //
+//   //
+//   //
+//   //  (6) ----- (7) --- (8) 
+//   //   |\      / \      /|
+//   //   | \    /   \    / |
+//   //   |  \  /     \  /  |
+//   //   |   (4)------(5)  |
+//   //   |   / \      / \  |
+//   //   |  /   \    /   \ |
+//   //   | /     \  /     \|
+//   //   (1)----(2)------(3)
+//   //
 
-  // Write the vertex coordinates
-  fprintf(fl, "v 0 0 0 \n");
-  fprintf(fl, "v 1 0 0 \n");
-  fprintf(fl, "v 2 0 0 \n");
-  fprintf(fl, "v 0.5 0.5 0 \n");
-  fprintf(fl, "v 1.5 0.5 0 \n");
-  fprintf(fl, "v 0 1 0 \n");
-  fprintf(fl, "v 1 1 0 \n");
-  fprintf(fl, "v 2 1 0 \n");
+//   // Write the vertex coordinates
+//   fprintf(fl, "v 0 0 0 \n");
+//   fprintf(fl, "v 1 0 0 \n");
+//   fprintf(fl, "v 2 0 0 \n");
+//   fprintf(fl, "v 0.5 0.5 0 \n");
+//   fprintf(fl, "v 1.5 0.5 0 \n");
+//   fprintf(fl, "v 0 1 0 \n");
+//   fprintf(fl, "v 1 1 0 \n");
+//   fprintf(fl, "v 2 1 0 \n");
 
-  // Write the faces (vertices are index1-based in .obj format)
-  fprintf(fl, "\n");
-  fprintf(fl, "f 1 2 4 \n");
-  fprintf(fl, "f 2 3 5 \n");
-  fprintf(fl, "f 1 4 6 \n");
-  fprintf(fl, "f 4 2 5 \n");
-  fprintf(fl, "f 5 3 8 \n");
-  fprintf(fl, "f 6 4 7 \n");
-  fprintf(fl, "f 7 4 5 \n");
-  fprintf(fl, "f 7 5 8 \n");
+//   // Write the faces (vertices are index1-based in .obj format)
+//   fprintf(fl, "\n");
+//   fprintf(fl, "f 1 2 4 \n");
+//   fprintf(fl, "f 2 3 5 \n");
+//   fprintf(fl, "f 1 4 6 \n");
+//   fprintf(fl, "f 4 2 5 \n");
+//   fprintf(fl, "f 5 3 8 \n");
+//   fprintf(fl, "f 6 4 7 \n");
+//   fprintf(fl, "f 7 4 5 \n");
+//   fprintf(fl, "f 7 5 8 \n");
 
-  fclose(fl);
-}
+//   fclose(fl);
+// }
 
 } // end of anonymus namespace
 
@@ -82,7 +82,6 @@ int main(int argc, char **argv)
   // Create a mesh_connectivity and a mesh reader
   mohecore::Mesh_connectivity mesh;
   mohecore::Mesh_io io(mesh);
-  mohecore::Mesh_modifier_edge_collapse modi(mesh);
 
   printf("=== MESH EDGE COLLAPSE PRIORITY QUEUE TEST === \n");
 
@@ -123,30 +122,41 @@ int main(int argc, char **argv)
   printf("Total faces: %d \n", mesh.n_active_faces());
   printf("Total half-edges: %d \n", mesh.n_active_half_edges());
 
-  // Initialize quadrics for all vertices
-  printf("\n=== Initializing Quadrics === \n");
-  modi.initialize_quadrics();
-  printf("Quadrics initialized for all vertices.\n");
+  // Initialize the mesh simplifier (computes quadrics and builds valid pairs)
+  printf("\n=== Initializing Mesh Simplifier === \n");
+  mohecore::Mesh_modifier_edge_collapse modi(mesh);
+  modi.initialize();
+  printf("Mesh simplifier initialized (quadrics and valid pairs computed).\n");
 
-  // Initialize the priority queue
-  printf("\n=== Initializing Priority Queue === \n");
-  modi.initialize_priority_queue();
-  printf("Priority queue initialized.\n");
-  printf("Verification: PQ has %d edges (should be half of %d half-edges)\n",
-         static_cast<int>(modi.get_top_n_candidates(mesh.n_active_half_edges()).size()),
-         mesh.n_active_half_edges());
+  // Count valid pairs by popping all entries
+  int num_valid_pairs = 0;
+  int num_edges = mesh.n_active_half_edges() / 2;
+  mohecore::Mesh_modifier_edge_collapse::MergeCandidate candidate{0.0, {0, 0}, Eigen::Vector3d::Zero(), 0};
 
-  // Get and print the top 10 candidates
-  printf("\n=== Top 10 Edge Collapse Candidates (sqrt of origin vertex ID) === \n");
-  std::vector<int> top_candidates = modi.get_top_n_candidates(10);
+  while (modi.get_min_pair(candidate)) {
+    num_valid_pairs++;
+  }
 
-  for (size_t i = 0; i < top_candidates.size(); ++i) {
-    int he_idx = top_candidates[i];
-    auto he = mesh.half_edge_at(he_idx);
-    int v_origin = he.origin().index();
-    float metric = std::sqrt(static_cast<float>(v_origin));
-    printf("Candidate %zu: Half-edge %d (vertex %d -> %d), metric=%.3f\n",
-           i + 1, he_idx, v_origin, he.dest().index(), metric);
+  printf("Valid pairs found: %d\n", num_valid_pairs);
+  printf("Expected (number of edges): %d\n", num_edges);
+
+  if (num_valid_pairs == num_edges) {
+    printf("✓ SUCCESS: Valid pairs count matches edge count!\n");
+  } else {
+    printf("✗ MISMATCH: Valid pairs count does not match edge count!\n");
+  }
+
+  // Print first few candidates
+  printf("\n=== First 5 Edge Collapse Candidates (by QEM error) === \n");
+  modi.initialize(); // Re-initialize since we popped everything
+
+  for (int i = 0; i < 100 && modi.get_min_pair(candidate); ++i) {
+    int v1 = candidate.pair.v1;
+    int v2 = candidate.pair.v2;
+    double error = candidate.error;
+    printf("Candidate %d: Edge (%d, %d), error=%.9f, x_opt=(%.3f, %.3f, %.3f)\n",
+           i + 1, v1, v2, error,
+           candidate.x_opt[0], candidate.x_opt[1], candidate.x_opt[2]);
   }
 
   printf("\n");

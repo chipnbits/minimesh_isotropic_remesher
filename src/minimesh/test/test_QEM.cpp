@@ -496,7 +496,7 @@ TEST_CASE("SymQuadric: Associative property of addition") {
     }
 }
 
-TEST_CASE("Mesh_modifier_edge_collapse: initialize_quadrics on tetrahedron") {
+TEST_CASE("Mesh_modifier_edge_collapse: initialize on tetrahedron") {
     // Load the tetrahedron mesh
     Mesh_connectivity mesh;
     REQUIRE(load_test_mesh(mesh, "mesh/tetra.obj"));
@@ -510,11 +510,11 @@ TEST_CASE("Mesh_modifier_edge_collapse: initialize_quadrics on tetrahedron") {
     CHECK(mesh.n_active_faces() == 4);
     CHECK(mesh.check_sanity_slowly(false));
 
-    // Create modifier and initialize quadrics
+    // Create modifier and initialize (computes quadrics and builds valid pairs)
     Mesh_modifier_edge_collapse modifier(mesh);
 
     // This should not throw an exception
-    REQUIRE_NOTHROW(modifier.initialize_quadrics());
+    REQUIRE_NOTHROW(modifier.initialize());
 
     // After initialization, mesh should still be valid
     CHECK(mesh.check_sanity_slowly(false));
@@ -543,4 +543,132 @@ TEST_CASE("Mesh_modifier_edge_collapse: initialize_quadrics on tetrahedron") {
             MESSAGE("Vertex quadric evaluation at vertex position: ", Q.evalMul_xt_Q_x(v.xyz()));
         }
     }
+}
+
+TEST_CASE("Mesh_modifier_edge_collapse: heap versioning with reinserted pairs") {
+    // Test that re-inserting pairs creates duplicates in heap but validation filters them
+    // The number of valid candidates should remain the same, but version counts should increment
+
+    Mesh_connectivity mesh;
+    REQUIRE(load_test_mesh(mesh, "mesh/tetra.obj"));
+
+    Mesh_modifier_edge_collapse modifier(mesh);
+    REQUIRE_NOTHROW(modifier.initialize());
+
+    // Get all pairs containing vertex 0
+    auto v0_pairs = modifier.get_all_pairs_from_vertex(0);
+
+    INFO("Vertex 0 has " << v0_pairs.size() << " pairs");
+    REQUIRE(v0_pairs.size() > 0);
+
+    // Count initial valid candidates
+    std::vector<Mesh_modifier_edge_collapse::MergeCandidate> initial_candidates;
+    Mesh_modifier_edge_collapse::MergeCandidate candidate;
+    while (modifier.get_min_pair(candidate)) {
+        initial_candidates.push_back(candidate);
+    }
+    int initial_count = initial_candidates.size();
+
+    INFO("Initial candidate count: " << initial_count);
+    REQUIRE(initial_count > 0);
+
+    // Re-initialize to reset heap
+    modifier.initialize();
+
+    // Re-insert all pairs from vertex 0 (this will increment their versions and add duplicates)
+    for (const auto& pair : v0_pairs) {
+        modifier.add_or_update_pair(pair.v1, pair.v2);
+    }
+
+    // Now when we get min pairs, we should get the same count but with incremented versions
+    // The heap contains duplicates but get_min_pair should filter out stale entries
+    std::vector<Mesh_modifier_edge_collapse::MergeCandidate> new_candidates;
+    while (modifier.get_min_pair(candidate)) {
+        new_candidates.push_back(candidate);
+    }
+
+    INFO("New candidate count: " << new_candidates.size());
+
+    // Should have same number of valid candidates despite heap duplicates
+    CHECK(new_candidates.size() == initial_count);
+
+    // Check that pairs from vertex 0 have incremented versions (version 2)
+    // Other pairs should still have version 1
+    int v0_pairs_found = 0;
+    int other_pairs_found = 0;
+
+    for (const auto& cand : new_candidates) {
+        if (cand.pair.v1 == 0 || cand.pair.v2 == 0) {
+            INFO("Vertex 0 pair (" << cand.pair.v1 << ", " << cand.pair.v2 << ") has version " << cand.version);
+            CHECK(cand.version == 2);
+            v0_pairs_found++;
+        } else {
+            CHECK(cand.version == 1);
+            other_pairs_found++;
+        }
+    }
+
+    CHECK(v0_pairs_found == v0_pairs.size());
+    INFO("Found " << v0_pairs_found << " vertex 0 pairs with incremented versions");
+    INFO("Found " << other_pairs_found << " other pairs with original versions");
+}
+
+TEST_CASE("Mesh_modifier_edge_collapse: heap versioning with manual invalidation") {
+    // Test that manually incrementing version counters invalidates pairs
+    // without reinserting them, effectively removing them from valid results
+
+    Mesh_connectivity mesh;
+    REQUIRE(load_test_mesh(mesh, "mesh/tetra.obj"));
+
+    Mesh_modifier_edge_collapse modifier(mesh);
+    REQUIRE_NOTHROW(modifier.initialize());
+
+    // Get all pairs containing vertex 0
+    auto v0_pairs = modifier.get_all_pairs_from_vertex(0);
+
+    INFO("Vertex 0 has " << v0_pairs.size() << " pairs");
+    REQUIRE(v0_pairs.size() > 0);
+
+    // Count initial valid candidates
+    std::vector<Mesh_modifier_edge_collapse::MergeCandidate> initial_candidates;
+    Mesh_modifier_edge_collapse::MergeCandidate candidate;
+    while (modifier.get_min_pair(candidate)) {
+        initial_candidates.push_back(candidate);
+    }
+    int initial_count = initial_candidates.size();
+
+    INFO("Initial candidate count: " << initial_count);
+    REQUIRE(initial_count > 0);
+
+    // Re-initialize to get a fresh heap
+    modifier.initialize();
+
+    // Now manually invalidate all pairs from vertex 0 by incrementing their version
+    // WITHOUT adding them to the heap. This makes all heap entries for these pairs stale.
+    for (const auto& pair : v0_pairs) {
+        modifier.invalidate_pair_for_testing(pair.v1, pair.v2);
+    }
+
+    // Count how many valid candidates remain after invalidation
+    std::vector<Mesh_modifier_edge_collapse::MergeCandidate> remaining_candidates;
+    while (modifier.get_min_pair(candidate)) {
+        remaining_candidates.push_back(candidate);
+    }
+    int remaining_count = remaining_candidates.size();
+
+    INFO("Remaining candidate count after invalidation: " << remaining_count);
+
+    // The count should have decreased by exactly the number of vertex 0 pairs
+    int expected_remaining = initial_count - v0_pairs.size();
+    CHECK(remaining_count == expected_remaining);
+
+    // Verify that none of the remaining candidates involve vertex 0
+    for (const auto& cand : remaining_candidates) {
+        CHECK(cand.pair.v1 != 0);
+        CHECK(cand.pair.v2 != 0);
+        INFO("Remaining pair: (" << cand.pair.v1 << ", " << cand.pair.v2 << ")");
+    }
+
+    INFO("Successfully invalidated " << v0_pairs.size() << " pairs without reinsertion");
+    INFO("Verified that invalidated pairs do not appear in results");
 }
