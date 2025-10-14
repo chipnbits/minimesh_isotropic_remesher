@@ -352,7 +352,7 @@ Mesh_modifier_edge_collapse::get_top_n_candidates(int n)
 // Testing helper: invalidate a pair by incrementing its version WITHOUT adding to heap
 //
 void
-Mesh_modifier_edge_collapse::invalidate_pair_for_testing(int v1, int v2)
+Mesh_modifier_edge_collapse::invalidate_pair(int v1, int v2)
 {
   VertexPair pair(v1, v2);
   _pair_versions[pair]++;

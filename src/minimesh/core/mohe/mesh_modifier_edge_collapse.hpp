@@ -168,7 +168,7 @@ public:
 
   // Testing helper: invalidate a pair by incrementing its version WITHOUT adding to heap
   // This makes all heap entries for this pair stale
-  void invalidate_pair_for_testing(int v1, int v2);
+  void invalidate_pair(int v1, int v2);
 
 private:
   // pointer to the mesh that we are working on.
