@@ -11,6 +11,7 @@
 // core
 #include <minimesh/core/mohe/mesh_connectivity.hpp>
 #include <minimesh/core/mohe/mesh_modifier_loop_subdivision.hpp>
+#include <minimesh/core/mohe/mesh_modifier_edge_collapse.hpp>
 #include <minimesh/core/mohe/mesh_io.hpp>
 #include <minimesh/core/util/assert.hpp>
 #include <minimesh/core/util/foldertools.hpp>
@@ -30,6 +31,7 @@ namespace globalvars
 {
 Mesh_viewer viewer;
 mohecore::Mesh_connectivity mesh;
+mohecore::Mesh_modifier_edge_collapse modi_edge(mesh);
 //
 int glut_main_window_id;
 //
@@ -190,7 +192,7 @@ void simplify_pressed(int)
 
 void show_spheres_pressed(int)
 {
-	// 
+	//
 	// Sample of using Mesh_viewer for MESH DEFORMATION ASSIGNMENT
 	// Here I color the vertices (draw spheres on them)
 	// Note that if you call rebuild, you have to redraw everything.
@@ -203,6 +205,50 @@ void show_spheres_pressed(int)
 	sphere_colors.col(2) << 0, 0, 1, 1;
 
 	globalvars::viewer.get_mesh_buffer().set_colorful_spheres(sphere_indices, sphere_colors);
+
+	glutPostRedisplay();
+}
+
+
+void show_top_candidates_pressed(int)
+{
+	printf("Showing top %d edge collapse candidates\n", globalvars::num_entities_to_simplify);
+
+	// Get the top k candidates (returns half-edge indices)
+	std::vector<int> top_k_he = globalvars::modi_edge.get_top_n_candidates(globalvars::num_entities_to_simplify);
+	printf("Found %zu candidates\n", top_k_he.size());
+
+	// Compute defragmentation maps to handle vertex indexing
+	mohecore::Mesh_connectivity::Defragmentation_maps defrag;
+	globalvars::mesh.compute_defragmention_maps(defrag);
+
+	// Prepare to color all vertices (default to white)
+	int n_active_verts = globalvars::mesh.n_active_vertices();
+	Eigen::Matrix4Xf vertex_colors(4, n_active_verts);
+	vertex_colors.setConstant(1.0f); // Default: white (R=1, G=1, B=1, A=1)
+
+	// Color the vertices involved in top 10 candidates
+	for(int he_idx : top_k_he)
+	{
+		auto he = globalvars::mesh.half_edge_at(he_idx);
+		if(!he.is_active()) continue;
+
+		int origin_idx = he.origin().index();
+		int dest_idx = he.dest().index();
+
+		// Map to defragmented indices
+		int origin_defrag = defrag.old2new_vertices[origin_idx];
+		int dest_defrag = defrag.old2new_vertices[dest_idx];
+
+		// Color origin vertex red
+		vertex_colors.col(origin_defrag) << 1.0f, 0.0f, 0.0f, 1.0f;
+
+		// Color destination vertex blue
+		vertex_colors.col(dest_defrag) << 0.0f, 0.0f, 1.0f, 1.0f;
+	}
+
+	// Apply vertex colors to mesh buffer
+	globalvars::viewer.get_mesh_buffer().set_vertex_colors(vertex_colors);
 
 	glutPostRedisplay();
 }
@@ -222,7 +268,7 @@ int main(int argc, char * argv[])
 	{
 		// retrieve filepath of /home/sghys/projects/CPSC524-modeling/mesh/tetra_complex.obj
 
-		mohecore::Mesh_io(globalvars::mesh).read_auto("/home/sghys/projects/CPSC524-modeling/mesh/tetra_complex.obj");
+		mohecore::Mesh_io(globalvars::mesh).read_auto("/home/sghys/projects/CPSC524-modeling/mesh/camel_simple.obj");
 	}
 	else // otherwise use the address specified in the command line
 	{
@@ -267,6 +313,9 @@ int main(int argc, char * argv[])
 		globalvars::viewer.get_mesh_buffer().rebuild(globalvars::mesh, defrag);
 	}
 
+	// Setup background modifier for edge collapse
+	globalvars::modi_edge.initialize();
+
 	//
 	// Add radio buttons to see which mesh components to view
 	// Please view GLUI's user manual to learn more.
@@ -310,6 +359,12 @@ int main(int argc, char * argv[])
 	
 	GLUI_Button* button_simplify = globalvars::glui->add_button("Simplify", -1, freeglutcallback::simplify_pressed);
 	button_simplify->set_w(200);
+
+	//
+	// Add button to visualize top 10 edge collapse candidates
+	//
+	GLUI_Button* button_visualize = globalvars::glui->add_button("Visualize", -1, freeglutcallback::show_top_candidates_pressed);
+	button_visualize->set_w(200);
 
 	//
 	// Add show spheres button to demo how to draw spheres on top of the vertices

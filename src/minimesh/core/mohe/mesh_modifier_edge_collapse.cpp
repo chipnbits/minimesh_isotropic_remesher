@@ -336,17 +336,55 @@ Mesh_modifier_edge_collapse::get_all_pairs_from_vertex(int vertex_id)
   return pairs;
 }
 
-/// Get the top N candidates from the priority queue
-/// Returns a vector of half-edge indices
-///
+// Peek top-N valid candidates (without changing queue contents),
+// while removing any stale entries encountered.
 std::vector<int>
 Mesh_modifier_edge_collapse::get_top_n_candidates(int n)
 {
-  std::vector<int> candidates;
-  // TODO: Implement
+    std::vector<MergeCandidate> result;
+    result.reserve(n);
 
-  return candidates;
+    // Temporarily hold valid entries we popped so we can restore them.
+    std::vector<MergeCandidate> restore;
+    restore.reserve(n);
+
+    // Pop until we gather N valid entries or the heap is exhausted.
+    while ((int)result.size() < n && !_pair_heap.empty())
+    {
+        MergeCandidate e = _pair_heap.top();
+        _pair_heap.pop();
+
+        // Stale? (version mismatch) -> drop it permanently (heap cleanup)
+        if (_pair_versions[e.pair] != e.version)
+            continue;
+
+        // Optionally guard against deactivated vertices.
+        // (Not strictly necessary if your versioning/invalidations are correct.)
+        // auto v1_active = mesh().vertex_at(e.pair.v1).is_active();
+        // auto v2_active = mesh().vertex_at(e.pair.v2).is_active();
+        // if (!v1_active || !v2_active) continue;
+
+        result.push_back(e);
+        restore.push_back(e);
+    }
+
+    // Restore the valid entries so this truly behaves like "peek".
+    for (const auto& e : restore)
+        _pair_heap.push(e);
+
+    // convert to half-edge indices    
+    std::vector<int> half_edge_indices;
+    half_edge_indices.reserve(result.size());
+    for (const auto& e : result)
+    {
+        int he_index = get_halfedge_between_vertices(e.pair.v1, e.pair.v2);
+        if (he_index != mesh().invalid_index)
+            half_edge_indices.push_back(he_index);
+    }
+
+    return half_edge_indices;
 }
+
 
 //
 // Testing helper: invalidate a pair by incrementing its version WITHOUT adding to heap

@@ -153,9 +153,13 @@ public:
   void add_or_update_pair(int v1, int v2);
 
   // Get the next best pair to collapse (minimum error)
-  // Returns true if a valid pair exists, false if heap is empty
+  // Returns true if a valid pair exists, false if heap is empty, pops the entry from the heap
   // Automatically skips stale heap entries
   bool get_min_pair(MergeCandidate & top);
+
+  // Invalidate a pair in the heap by incrementing the latest pair version WITHOUT adding to heap
+  // This makes all heap entries for this pair stale
+  void invalidate_pair(int v1, int v2);
 
   // Get all pairs containing a specific vertex (returns copies for safe iteration)
   std::set<VertexPair> get_all_pairs_from_vertex(int vertex_id);
@@ -166,9 +170,7 @@ public:
   //
   std::vector<int> get_top_n_candidates(int n);
 
-  // Testing helper: invalidate a pair by incrementing its version WITHOUT adding to heap
-  // This makes all heap entries for this pair stale
-  void invalidate_pair(int v1, int v2);
+
 
 private:
   // pointer to the mesh that we are working on.

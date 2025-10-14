@@ -744,3 +744,153 @@ TEST_CASE("Mesh_modifier_edge_collapse: heap versioning with manual invalidation
   INFO("Successfully invalidated " << v0_pairs.size() << " pairs without reinsertion");
   INFO("Verified that invalidated pairs do not appear in results");
 }
+
+TEST_CASE("Mesh_modifier_edge_collapse: get_top_n_candidates doesn't modify heap")
+{
+  // Test that get_top_n_candidates truly behaves like a peek - heap state is unchanged
+
+  Mesh_connectivity mesh;
+  REQUIRE(load_test_mesh(mesh, "mesh/camel_simple.obj"));
+
+  Mesh_modifier_edge_collapse modifier(mesh);
+  REQUIRE_NOTHROW(modifier.initialize());
+
+  // First pass: drain the heap to get baseline
+  std::vector<int> baseline_half_edges;
+  Mesh_modifier_edge_collapse::MergeCandidate candidate;
+  while(modifier.get_min_pair(candidate))
+  {
+    int he = modifier.get_halfedge_between_vertices(candidate.pair.v1, candidate.pair.v2);
+    baseline_half_edges.push_back(he);
+  }
+
+  INFO("Baseline: heap contains " << baseline_half_edges.size() << " candidates");
+  REQUIRE(baseline_half_edges.size() > 0);
+
+  // Re-initialize to reset heap to same state
+  modifier.initialize();
+
+  // Call get_top_n_candidates (peek operation)
+  std::vector<int> top_3 = modifier.get_top_n_candidates(3);
+  INFO("get_top_n_candidates returned " << top_3.size() << " candidates");
+
+  // Second pass: drain the heap again - should match baseline exactly
+  std::vector<int> after_peek_half_edges;
+  while(modifier.get_min_pair(candidate))
+  {
+    int he = modifier.get_halfedge_between_vertices(candidate.pair.v1, candidate.pair.v2);
+    after_peek_half_edges.push_back(he);
+  }
+
+  INFO("After peek: heap contains " << after_peek_half_edges.size() << " candidates");
+
+  // Verify the heap contents are identical (same count and same order)
+  CHECK(after_peek_half_edges.size() == baseline_half_edges.size());
+  for(size_t i = 0; i < std::min(baseline_half_edges.size(), after_peek_half_edges.size()); ++i)
+  {
+    CHECK(after_peek_half_edges[i] == baseline_half_edges[i]);
+  }
+
+  // Verify top_3 matches the first 3 from baseline
+  int expected_count = std::min(3, static_cast<int>(baseline_half_edges.size()));
+  CHECK(top_3.size() == expected_count);
+  for(int i = 0; i < expected_count; ++i)
+  {
+    CHECK(top_3[i] == baseline_half_edges[i]);
+  }
+}
+
+TEST_CASE("Mesh_modifier_edge_collapse: get_top_n_candidates cleans up stale entries")
+{
+  // Test that get_top_n_candidates removes stale entries while peeking
+  // Even with stale entries present, heap behavior after peek should match clean heap
+
+  Mesh_connectivity mesh;
+  REQUIRE(load_test_mesh(mesh, "mesh/camel_simple.obj"));
+
+  Mesh_modifier_edge_collapse modifier(mesh);
+  REQUIRE_NOTHROW(modifier.initialize());
+
+  // First pass: drain clean heap to get baseline (what we expect after cleanup)
+  std::vector<int> baseline_half_edges;
+  Mesh_modifier_edge_collapse::MergeCandidate candidate;
+  while(modifier.get_min_pair(candidate))
+  {
+    int he = modifier.get_halfedge_between_vertices(candidate.pair.v1, candidate.pair.v2);
+    baseline_half_edges.push_back(he);
+  }
+  INFO("Baseline (clean heap): " << baseline_half_edges.size() << " candidates");
+
+  // Re-initialize and add stale entries
+  modifier.initialize();
+
+  // Get all pairs from vertex 0 and re-insert them to create stale entries
+  auto v0_pairs = modifier.get_all_pairs_from_vertex(0);
+  INFO("Adding stale entries for " << v0_pairs.size() << " vertex 0 pairs");
+  for(const auto& pair : v0_pairs)
+  {
+    modifier.add_or_update_pair(pair.v1, pair.v2);  // Creates version 2, version 1 becomes stale
+  }
+
+  // Now heap has duplicate entries: version 1 (stale) and version 2 (valid) for v0 pairs
+  // Call get_top_n_candidates - should clean up stale entries
+  std::vector<int> top_candidates = modifier.get_top_n_candidates(10);
+  INFO("get_top_n_candidates returned " << top_candidates.size() << " candidates");
+
+  // Drain heap after peek - should match baseline (stale entries cleaned up)
+  std::vector<int> after_cleanup_half_edges;
+  while(modifier.get_min_pair(candidate))
+  {
+    int he = modifier.get_halfedge_between_vertices(candidate.pair.v1, candidate.pair.v2);
+    after_cleanup_half_edges.push_back(he);
+  }
+  INFO("After cleanup: " << after_cleanup_half_edges.size() << " candidates");
+
+  // Should have same count as baseline (all stale entries removed)
+  CHECK(after_cleanup_half_edges.size() == baseline_half_edges.size());
+
+  // Should match baseline exactly (same order, same half-edges)
+  for(size_t i = 0; i < std::min(baseline_half_edges.size(), after_cleanup_half_edges.size()); ++i)
+  {
+    CHECK(after_cleanup_half_edges[i] == baseline_half_edges[i]);
+  }
+}
+
+TEST_CASE("Mesh_modifier_edge_collapse: get_top_n_candidates with n larger than heap")
+{
+  // Test that requesting more candidates than available works correctly
+
+  Mesh_connectivity mesh;
+  REQUIRE(load_test_mesh(mesh, "mesh/tetra.obj"));
+
+  Mesh_modifier_edge_collapse modifier(mesh);
+  REQUIRE_NOTHROW(modifier.initialize());
+
+  // Count total candidates first
+  Mesh_modifier_edge_collapse::MergeCandidate candidate;
+  int total_count = 0;
+  while(modifier.get_min_pair(candidate))
+  {
+    total_count++;
+  }
+  INFO("Mesh has " << total_count << " total candidates");
+
+  // Re-initialize and request more than available
+  modifier.initialize();
+  std::vector<int> all_candidates = modifier.get_top_n_candidates(100);
+
+  INFO("Requested 100, got " << all_candidates.size());
+
+  // Should return all available candidates
+  CHECK(all_candidates.size() == total_count);
+
+  // Verify heap is still intact
+  int count_after = 0;
+  while(modifier.get_min_pair(candidate))
+  {
+    count_after++;
+  }
+
+  CHECK(count_after == total_count);
+  INFO("Heap still contains " << count_after << " valid candidates after peek");
+}
