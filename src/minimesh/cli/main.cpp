@@ -150,13 +150,24 @@ int main(int argc, char **argv)
   printf("\n=== First 5 Edge Collapse Candidates (by QEM error) === \n");
   modi.initialize(); // Re-initialize since we popped everything
 
-  for (int i = 0; i < 100 && modi.get_min_pair(candidate); ++i) {
+  for (int i = 0; i < 10 && modi.get_min_pair(candidate); ++i) {
     int v1 = candidate.pair.v1;
     int v2 = candidate.pair.v2;
     double error = candidate.error;
     printf("Candidate %d: Edge (%d, %d), error=%.9f, x_opt=(%.3f, %.3f, %.3f)\n",
            i + 1, v1, v2, error,
            candidate.x_opt[0], candidate.x_opt[1], candidate.x_opt[2]);
+  }
+
+  // use modi to collapse 10 edges or until no valid pairs remain
+  printf("\n=== Collapsing 10 Edges === \n");
+  int collapses = 0;
+  while (collapses < 93 && modi.get_min_pair(candidate)) {
+    printf("Collapsing edge (%d, %d) with error %.9f [collapse #%d]\n",
+           candidate.pair.v1, candidate.pair.v2, candidate.error, collapses + 1);
+    if (modi.collapse_edge(candidate)) {
+      collapses++;
+    }
   }
 
   printf("\n");

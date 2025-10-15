@@ -164,7 +164,7 @@ public:
 
   // Invalidate a pair in the heap by incrementing the latest pair version WITHOUT adding to heap
   // This makes all heap entries for this pair stale
-  void invalidate_pair(int v1, int v2);
+  void invalidate_pair(VertexPair pair);
 
   // Check if collapsing the edge between v1 and v2 is legal (topology-preserving)
   bool is_legal_collapse(int v1, int v2);
@@ -199,6 +199,10 @@ private:
 
   // Initialize valid pairs for edge collapse
   void initialize_valid_pairs();
+
+  // replace all occurrences of old_id with new_id in the connectivity
+  // used internally after collapsing an edge
+  void relabel_vertex(int old_id, int new_id);
 
   //
   // Valid pairs data structure

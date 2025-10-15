@@ -716,7 +716,7 @@ TEST_CASE("Mesh_modifier_edge_collapse: heap versioning with manual invalidation
   // WITHOUT adding them to the heap. This makes all heap entries for these pairs stale.
   for(const auto & pair : v0_pairs)
   {
-    modifier.invalidate_pair(pair.v1, pair.v2);
+    modifier.invalidate_pair(pair);
   }
 
   // Count how many valid candidates remain after invalidation
@@ -1059,4 +1059,71 @@ TEST_CASE("Mesh_modifier_edge_collapse: pyramid_square base diagonal not collaps
   // According to the requirement, exactly one edge should be illegal (not collapsable)
   CHECK(illegal_count == 1);
   CHECK(legal_count == 4);
+}
+
+TEST_CASE("Mesh_modifier_edge_collapse: collapse edge on pyramid_square")
+{
+  // Test that collapse_edge works correctly on the pyramid_square mesh
+  // Load the mesh, get the minimum error pair, and attempt to collapse it
+
+  Mesh_connectivity mesh;
+  REQUIRE(load_test_mesh(mesh, "mesh/pyramid_square.obj"));
+
+  Mesh_modifier_edge_collapse modifier(mesh);
+  REQUIRE_NOTHROW(modifier.initialize());
+
+  // Record initial mesh state
+  int initial_vertices = mesh.n_active_vertices();
+  int initial_faces = mesh.n_active_faces();
+  int initial_half_edges = mesh.n_active_half_edges();
+
+  INFO("Initial mesh state: V=" << initial_vertices
+       << " F=" << initial_faces
+       << " HE=" << initial_half_edges);
+
+  CHECK(initial_vertices == 5);
+  CHECK(initial_faces == 6);
+
+  // Get the minimum error pair
+  Mesh_modifier_edge_collapse::MergeCandidate candidate;
+  bool found = modifier.get_min_pair(candidate);
+
+  REQUIRE(found);
+  INFO("Min pair: (" << candidate.pair.v1 << ", " << candidate.pair.v2 << ")");
+  INFO("Error: " << candidate.error);
+  INFO("Optimal position: (" << candidate.x_opt[0] << ", "
+       << candidate.x_opt[1] << ", " << candidate.x_opt[2] << ")");
+
+  // Attempt to collapse the edge
+  bool collapse_success = modifier.collapse_edge(candidate);
+
+  INFO("Collapse " << (collapse_success ? "succeeded" : "failed"));
+
+  if(collapse_success)
+  {
+    // Verify mesh is still valid after collapse
+    CHECK(mesh.check_sanity_slowly(false));
+
+    // Check that vertex count decreased by 1
+    int final_vertices = mesh.n_active_vertices();
+    INFO("Final vertices: " << final_vertices);
+    CHECK(final_vertices == initial_vertices - 1);
+
+    // Check that face count decreased (should lose at least 2 faces for interior edge)
+    int final_faces = mesh.n_active_faces();
+    INFO("Final faces: " << final_faces);
+    CHECK(final_faces < initial_faces);
+
+    // Print final mesh state
+    INFO("Final mesh state: V=" << final_vertices
+         << " F=" << final_faces
+         << " HE=" << mesh.n_active_half_edges());
+  }
+  else
+  {
+    // If collapse failed, mesh should remain unchanged
+    INFO("Collapse was illegal, mesh should remain unchanged");
+    CHECK(mesh.n_active_vertices() == initial_vertices);
+    CHECK(mesh.n_active_faces() == initial_faces);
+  }
 }

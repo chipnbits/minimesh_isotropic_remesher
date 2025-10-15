@@ -351,15 +351,94 @@ Mesh_modifier_edge_collapse::collapse_edge(MergeCandidate & candidate)
   auto he_f2_top = he_v2_v1.prev().twin().prev();
 
 
+  // Invalidate all pairs involving v2 from the heap
+  auto pairs_to_invalidate = get_all_pairs_from_vertex(v2);
+  for(const auto & p : pairs_to_invalidate)
+  {
+    invalidate_pair(p);
+  }
+
+  // Remap all half-edges originating from v2 to originate from v1
+  relabel_vertex(v2, v1);
+
+  // Debug: print half-edge info before deactivation
+  printf("  DEBUG: Before deactivation:\n");
+  printf("    he_f1_associate: idx=%d, prev=%d, next=%d, active=%d\n",
+         he_f1_associate.index(), he_f1_associate.prev().index(), he_f1_associate.next().index(), he_f1_associate.is_active());
+  printf("    he_f2_associate: idx=%d, prev=%d, next=%d, active=%d\n",
+         he_f2_associate.index(), he_f2_associate.prev().index(), he_f2_associate.next().index(), he_f2_associate.is_active());
+  printf("    he_f1_bottom: idx=%d, prev=%d, next=%d, active=%d\n",
+         he_f1_bottom.index(), he_f1_bottom.prev().index(), he_f1_bottom.next().index(), he_f1_bottom.is_active());
+  printf("    he_f2_top: idx=%d, prev=%d, next=%d, active=%d\n",
+         he_f2_top.index(), he_f2_top.prev().index(), he_f2_top.next().index(), he_f2_top.is_active());
+
+  // Deactivate faces
+  face_top.deactivate();
+  face_bottom.deactivate();
+  // Deactivate 6 half-edges
+  he_v1_v2.next().twin().deactivate();
+  he_v1_v2.next().deactivate();
+  he_v1_v2.deactivate();
+  he_v2_v1.prev().twin().deactivate();
+  he_v2_v1.prev().deactivate();
+  he_v2_v1.deactivate();
+
+  printf("  DEBUG: After deactivation, deactivated half-edges: %d, %d, %d, %d, %d, %d\n",
+         he_v1_v2.next().twin().index(), he_v1_v2.next().index(), he_v1_v2.index(),
+         he_v2_v1.prev().twin().index(), he_v2_v1.prev().index(), he_v2_v1.index());
+  // Deactivate vertex v2
+  v2_iter.deactivate();
+
+  // Top edges re-linking
+  he_f1_associate.data().next = he_f1_bottom.index();
+  he_f1_bottom.data().prev = he_f1_associate.index();
+  he_f1_associate.data().prev = he_f1_bottom.next().index();
+  he_f1_bottom.next().data().next = he_f1_associate.index();
+  // Relink face f1
+  he_f1_associate.data().face = face_f1.index();
+  face_f1.data().half_edge = he_f1_associate.index();
+
+  // Bottom edges re-linking
+  he_f2_associate.data().next = he_f2_top.prev().index();
+  he_f2_top.prev().data().prev = he_f2_associate.index();
+  he_f2_associate.data().prev = he_f2_top.index();
+  he_f2_top.data().next = he_f2_associate.index();
+  // Relink face f2
+  he_f2_associate.data().face = face_f2.index();
+  face_f2.data().half_edge = he_f2_associate.index();
+
+  // Update vertices to point to valid half-edges
+  v1_iter.data().half_edge = he_f1_associate.twin().index();
+  u1_iter.data().half_edge = he_f1_associate.index();
+  u2_iter.data().half_edge = he_f2_associate.twin().index();
 
   // Move vertex v1 to optimal position
   mesh().vertex_at(v1).data().xyz = candidate.x_opt;
   // Update quadric of v1
   _vertex_quadrics[v1] += _vertex_quadrics[v2];
 
-
+  // Recompute pairs involving v1
+  auto new_pairs = get_all_pairs_from_vertex(v1);
+  for(const auto & p : new_pairs)
+  {
+    add_or_update_pair(p.v1, p.v2);
+  }
 
   return true;
+}
+
+// Relabel the origin on all the half edges originating from v2
+void Mesh_modifier_edge_collapse::relabel_vertex(int old_id, int new_id)
+{
+  auto he = mesh().vertex_at(old_id).half_edge(); 
+  const int he_start_index = he.index();
+  do
+  {
+    assert(he.origin().index() == old_id);
+    he.data().origin = new_id; 
+    he = he.twin().next();
+  } while(he.index() != he_start_index);
+  
 }
 
 //
@@ -368,15 +447,15 @@ Mesh_modifier_edge_collapse::collapse_edge(MergeCandidate & candidate)
 std::set<Mesh_modifier_edge_collapse::VertexPair>
 Mesh_modifier_edge_collapse::get_all_pairs_from_vertex(int vertex_id)
 {
-  // Use a ring iterator to find all incident half-edges
+  // Use a ring iterator to gather all pairs (one pair per neighbor / two half edges)
   std::set<VertexPair> pairs;
   Mesh_connectivity::Vertex_ring_iterator ring_iter = mesh().vertex_ring_at(vertex_id);
+  Mesh_connectivity::Half_edge_iterator he;
+
   do
   {
-    auto he = ring_iter.half_edge();
-    int v1 = he.origin().index();
-    int v2 = he.dest().index();
-    pairs.insert(VertexPair(v1, v2));
+    he = ring_iter.half_edge();
+    pairs.insert(VertexPair(he.origin().index(), he.dest().index()));
   } while(ring_iter.advance());
   return pairs;
 }
@@ -445,7 +524,7 @@ Mesh_modifier_edge_collapse::get_top_n_candidates(int n)
 
 
 void
-Mesh_modifier_edge_collapse::invalidate_pair(int v1, int v2)
+Mesh_modifier_edge_collapse::invalidate_pair(VertexPair pair)
 {
   VertexPair pair(v1, v2);
   _pair_versions[pair]++;
