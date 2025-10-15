@@ -317,6 +317,51 @@ Mesh_modifier_edge_collapse::get_min_pair(MergeCandidate & top)
   return false;
 }
 
+
+//  
+bool
+Mesh_modifier_edge_collapse::collapse_edge(MergeCandidate & candidate)
+{
+  int v1 = candidate.pair.v1;
+  int v2 = candidate.pair.v2;
+
+  // Check if collapse is legal (topology-preserving)
+  if(!is_legal_collapse(v1, v2))
+  {
+    return false; // Illegal collapse
+  }
+
+  auto v1_iter = mesh().vertex_at(v1);
+  auto v2_iter = mesh().vertex_at(v2);
+  auto he_v1_v2 = mesh().half_edge_at(get_halfedge_between_vertices(v1, v2));
+  auto he_v2_v1 = he_v1_v2.twin();
+  auto u1_iter =  he_v1_v2.next().dest();
+  auto u2_iter = he_v2_v1.prev().origin();
+  
+  auto face_top = he_v1_v2.face();
+  auto face_bottom = he_v2_v1.face();
+  
+  auto face_f1 = he_v1_v2.next().twin().face();
+  auto face_f2 = he_v2_v1.prev().twin().face();
+  auto he_f1_associate = he_v1_v2.prev();
+  auto he_f2_associate = he_v2_v1.next();
+
+  // Get the half-edges that will need to be re-linked
+  auto he_f1_bottom = he_v1_v2.next().twin().next();
+  auto he_f2_top = he_v2_v1.prev().twin().prev();
+
+
+
+  // Move vertex v1 to optimal position
+  mesh().vertex_at(v1).data().xyz = candidate.x_opt;
+  // Update quadric of v1
+  _vertex_quadrics[v1] += _vertex_quadrics[v2];
+
+
+
+  return true;
+}
+
 //
 // Get all pairs containing a specific vertex
 //
@@ -334,6 +379,19 @@ Mesh_modifier_edge_collapse::get_all_pairs_from_vertex(int vertex_id)
     pairs.insert(VertexPair(v1, v2));
   } while(ring_iter.advance());
   return pairs;
+}
+
+std::set<int>
+Mesh_modifier_edge_collapse::get_all_neighbors_from_vertex(int vertex_id)
+{
+  std::set<int> neighbors;
+  auto ring_iter = mesh().vertex_ring_at(vertex_id);
+  do
+  {
+    // he always points to vertex, so origin is the neighbor
+    neighbors.insert(ring_iter.half_edge().origin().index());
+  } while (ring_iter.advance());
+  return neighbors;
 }
 
 // Peek top-N valid candidates (without changing queue contents),
@@ -386,14 +444,53 @@ Mesh_modifier_edge_collapse::get_top_n_candidates(int n)
 }
 
 
-//
-// Testing helper: invalidate a pair by incrementing its version WITHOUT adding to heap
-//
 void
 Mesh_modifier_edge_collapse::invalidate_pair(int v1, int v2)
 {
   VertexPair pair(v1, v2);
   _pair_versions[pair]++;
+}
+
+// Condition checks that edge (v1,v2) has exactly two shared neighbors on the two faces
+// that it connects, and at least one unique neighbor on either side (tetrahedron catcher)
+bool Mesh_modifier_edge_collapse::is_legal_collapse(int v1, int v2)
+{
+  // Gather neighbors (excluding each other)
+  std::set<int> n1 = get_all_neighbors_from_vertex(v1);
+  std::set<int> n2 = get_all_neighbors_from_vertex(v2);
+  n1.erase(v2);
+  n2.erase(v1);
+
+  // Opposite vertices across edge (the two triangle tips)
+  auto he = mesh().half_edge_at(get_halfedge_between_vertices(v1, v2));
+  int u1 = he.next().dest().index();
+  int u2 = he.twin().next().dest().index();
+
+  // Common neighbors
+  std::set<int> common;
+  std::set_intersection(n1.begin(), n1.end(),
+                        n2.begin(), n2.end(),
+                        std::inserter(common, common.begin()));
+
+  // Condition A: the only common neighbors allowed are u1 and u2
+  std::set<int> common_minus_u;
+  std::set<int> allowed = {u1, u2};
+  std::set_difference(common.begin(), common.end(),
+                      allowed.begin(), allowed.end(),
+                      std::inserter(common_minus_u, common_minus_u.begin()));
+  if (!common_minus_u.empty())
+    return false;
+
+  // Condition B: there exists at least one neighbor NOT in common
+  // (i.e., the symmetric difference is non-empty)
+  std::set<int> symdiff;
+  std::set_symmetric_difference(n1.begin(), n1.end(),
+                                n2.begin(), n2.end(),
+                                std::inserter(symdiff, symdiff.begin()));
+  if (symdiff.empty())
+    return false;
+
+  return true;
 }
 
 

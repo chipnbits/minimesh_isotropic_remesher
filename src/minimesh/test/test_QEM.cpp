@@ -597,9 +597,9 @@ TEST_CASE("Mesh_modifier_edge_collapse: initialize on tetrahedron")
     {
       auto Q = modifier.vertex_quadric(i);
       Eigen::Matrix4d M = Q.toMatrix();
-      MESSAGE("  Q for v", i, ":\n", M);
-      MESSAGE(" Vertex location: ", v.xyz().transpose());
-      MESSAGE("Vertex quadric evaluation at vertex position: ", Q.evalMul_xt_Q_x(v.xyz()));
+      INFO("  Q for v", i, ":\n", M);
+      INFO(" Vertex location: ", v.xyz().transpose());
+      INFO("Vertex quadric evaluation at vertex position: ", Q.evalMul_xt_Q_x(v.xyz()));
     }
   }
 }
@@ -893,4 +893,170 @@ TEST_CASE("Mesh_modifier_edge_collapse: get_top_n_candidates with n larger than 
 
   CHECK(count_after == total_count);
   INFO("Heap still contains " << count_after << " valid candidates after peek");
+}
+
+TEST_CASE("Mesh_modifier_edge_collapse: tetrahedron all edges illegal collapse")
+{
+  // Test that all edges in a tetrahedron fail the is_legal_collapse test
+  // A tetrahedron is the minimal 3D simplicial complex - no edge can be collapsed
+  // without destroying the 3D structure
+
+  Mesh_connectivity mesh;
+  REQUIRE(load_test_mesh(mesh, "mesh/tetra.obj"));
+
+  Mesh_modifier_edge_collapse modifier(mesh);
+  REQUIRE_NOTHROW(modifier.initialize());
+
+  // Verify it's a tetrahedron
+  CHECK(mesh.n_active_vertices() == 4);
+  CHECK(mesh.n_active_faces() == 4);
+
+  INFO("Testing tetrahedron edge collapse legality");
+
+  // Collect all unique edges by iterating through all half-edges
+  std::set<std::pair<int, int>> unique_edges;
+  for(int he_idx = 0; he_idx < mesh.n_total_half_edges(); ++he_idx)
+  {
+    auto he = mesh.half_edge_at(he_idx);
+    if(he.is_active())
+    {
+      int v1 = he.origin().index();
+      int v2 = he.dest().index();
+      // Store edge in canonical form (smaller index first)
+      if(v1 > v2)
+        std::swap(v1, v2);
+      unique_edges.insert({v1, v2});
+    }
+  }
+
+  INFO("Found " << unique_edges.size() << " unique edges in tetrahedron");
+
+  // A tetrahedron has 6 edges (complete graph on 4 vertices)
+  CHECK(unique_edges.size() == 6);
+
+  // Check that ALL edges are illegal to collapse
+  int illegal_count = 0;
+  for(const auto & edge : unique_edges)
+  {
+    bool is_legal = modifier.is_legal_collapse(edge.first, edge.second);
+    INFO("Edge (" << edge.first << ", " << edge.second << ") is_legal: " << is_legal);
+
+    if(!is_legal)
+    {
+      illegal_count++;
+    }
+
+    // All edges should be illegal
+    CHECK_FALSE(is_legal);
+  }
+
+  CHECK(illegal_count == 6);
+  INFO("All " << illegal_count << " edges in tetrahedron are correctly marked as illegal to collapse");
+}
+
+TEST_CASE("Mesh_modifier_edge_collapse: pyramid_square base diagonal not collapsable")
+{
+  // Test the square pyramid mesh
+  // The base has 4 vertices forming a square that's triangulated with a diagonal
+  // According to the requirement, there should be exactly one edge on the base
+  // that is not collapsable (the diagonal edge used for triangulation)
+
+  Mesh_connectivity mesh;
+  REQUIRE(load_test_mesh(mesh, "mesh/pyramid_square.obj"));
+
+  Mesh_modifier_edge_collapse modifier(mesh);
+  REQUIRE_NOTHROW(modifier.initialize());
+
+  // Verify it's a square pyramid
+  INFO("Pyramid: V=" << mesh.n_active_vertices()
+       << " F=" << mesh.n_active_faces()
+       << " HE=" << mesh.n_active_half_edges());
+
+  CHECK(mesh.n_active_vertices() == 5);
+  CHECK(mesh.n_active_faces() == 6); // 4 sides + 2 base triangles
+
+  // Identify the apex and base vertices by z-coordinate
+  int apex_vertex = -1;
+  std::vector<int> base_vertices;
+
+  for(int i = 0; i < mesh.n_total_vertices(); ++i)
+  {
+    auto v = mesh.vertex_at(i);
+    if(v.is_active())
+    {
+      auto xyz = v.xyz();
+      INFO("v" << i << ": (" << xyz[0] << ", " << xyz[1] << ", " << xyz[2] << ")");
+
+      // Apex should be at z=1, base vertices at z=0
+      if(std::abs(xyz[2] - 1.0) < 1e-6)
+      {
+        apex_vertex = i;
+      }
+      else if(std::abs(xyz[2] - 0.0) < 1e-6)
+      {
+        base_vertices.push_back(i);
+      }
+    }
+  }
+
+  REQUIRE(apex_vertex >= 0);
+  REQUIRE(base_vertices.size() == 4);
+  INFO("Apex vertex: " << apex_vertex);
+  INFO("Base vertices: " << base_vertices[0] << ", " << base_vertices[1]
+       << ", " << base_vertices[2] << ", " << base_vertices[3]);
+
+  // Collect all edges on the base (edges between base vertices only)
+  std::set<std::pair<int, int>> base_edges;
+  for(int he_idx = 0; he_idx < mesh.n_total_half_edges(); ++he_idx)
+  {
+    auto he = mesh.half_edge_at(he_idx);
+    if(he.is_active())
+    {
+      int v1 = he.origin().index();
+      int v2 = he.dest().index();
+
+      // Check if both vertices are in the base
+      bool v1_is_base = std::find(base_vertices.begin(), base_vertices.end(), v1) != base_vertices.end();
+      bool v2_is_base = std::find(base_vertices.begin(), base_vertices.end(), v2) != base_vertices.end();
+
+      if(v1_is_base && v2_is_base)
+      {
+        // Store edge in canonical form
+        if(v1 > v2)
+          std::swap(v1, v2);
+        base_edges.insert({v1, v2});
+      }
+    }
+  }
+
+  INFO("Found " << base_edges.size() << " edges on the base");
+
+  // The base is triangulated, so it should have 5 edges:
+  // 4 perimeter edges + 1 diagonal
+  CHECK(base_edges.size() == 5);
+
+  // Check collapse legality for all base edges
+  int legal_count = 0;
+  int illegal_count = 0;
+
+  for(const auto & edge : base_edges)
+  {
+    bool is_legal = modifier.is_legal_collapse(edge.first, edge.second);
+    INFO("Base edge (" << edge.first << ", " << edge.second << ") is_legal: " << is_legal);
+
+    if(is_legal)
+    {
+      legal_count++;
+    }
+    else
+    {
+      illegal_count++;
+    }
+  }
+
+  INFO("Base edges: " << legal_count << " legal, " << illegal_count << " illegal");
+
+  // According to the requirement, exactly one edge should be illegal (not collapsable)
+  CHECK(illegal_count == 1);
+  CHECK(legal_count == 4);
 }

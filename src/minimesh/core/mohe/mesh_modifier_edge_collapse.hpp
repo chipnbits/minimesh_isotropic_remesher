@@ -157,12 +157,23 @@ public:
   // Automatically skips stale heap entries
   bool get_min_pair(MergeCandidate & top);
 
+  // Collapse an edge between two vertices, merging v2 into v1
+  // Updates connectivity and removes degenerate faces
+  // Returns true if collapse was successful, false if illegal (topology-preserving)
+  bool collapse_edge(MergeCandidate & candidate);
+
   // Invalidate a pair in the heap by incrementing the latest pair version WITHOUT adding to heap
   // This makes all heap entries for this pair stale
   void invalidate_pair(int v1, int v2);
 
+  // Check if collapsing the edge between v1 and v2 is legal (topology-preserving)
+  bool is_legal_collapse(int v1, int v2);
+
   // Get all pairs containing a specific vertex (returns copies for safe iteration)
   std::set<VertexPair> get_all_pairs_from_vertex(int vertex_id);
+
+  // Get all neighboring vertices of a vertex
+  std::set<int> get_all_neighbors_from_vertex(int vertex_id);
 
   //
   // Get the top N edge candidates from the priority queue
