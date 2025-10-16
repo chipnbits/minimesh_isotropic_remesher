@@ -298,6 +298,9 @@ Mesh_modifier_edge_collapse::add_or_update_pair(int v1, int v2)
 bool
 Mesh_modifier_edge_collapse::get_min_pair(MergeCandidate & top)
 {
+  // Check if mesh modifier is properly initialized
+  check_initialized();
+
   // Pop stale entries until we find a valid one
   while(!_pair_heap.empty())
   {
@@ -318,10 +321,13 @@ Mesh_modifier_edge_collapse::get_min_pair(MergeCandidate & top)
 }
 
 
-//  
+//
 bool
 Mesh_modifier_edge_collapse::collapse_edge(MergeCandidate & candidate)
 {
+  // Check if mesh modifier is properly initialized
+  check_initialized();
+
   int v1 = candidate.pair.v1;
   int v2 = candidate.pair.v2;
 
@@ -350,9 +356,14 @@ Mesh_modifier_edge_collapse::collapse_edge(MergeCandidate & candidate)
   auto he_f1_bottom = he_v1_v2.next().twin().next();
   auto he_f2_top = he_v2_v1.prev().twin().prev();
 
+  // outer half-edges of two adjacent v2 side faces
+  // defined so that s1=s2 when collapsing edge of degenerate form
+  auto he_s1 = he_v1_v2.next().twin().prev();
+  auto he_s2 = he_v2_v1.prev().twin().next();
+
 
   // Invalidate all pairs involving v2 from the heap
-  auto pairs_to_invalidate = get_all_pairs_from_vertex(v2);
+   auto pairs_to_invalidate = get_all_pairs_from_vertex(v2);
   for(const auto & p : pairs_to_invalidate)
   {
     invalidate_pair(p);
@@ -360,17 +371,6 @@ Mesh_modifier_edge_collapse::collapse_edge(MergeCandidate & candidate)
 
   // Remap all half-edges originating from v2 to originate from v1
   relabel_vertex(v2, v1);
-
-  // Debug: print half-edge info before deactivation
-  printf("  DEBUG: Before deactivation:\n");
-  printf("    he_f1_associate: idx=%d, prev=%d, next=%d, active=%d\n",
-         he_f1_associate.index(), he_f1_associate.prev().index(), he_f1_associate.next().index(), he_f1_associate.is_active());
-  printf("    he_f2_associate: idx=%d, prev=%d, next=%d, active=%d\n",
-         he_f2_associate.index(), he_f2_associate.prev().index(), he_f2_associate.next().index(), he_f2_associate.is_active());
-  printf("    he_f1_bottom: idx=%d, prev=%d, next=%d, active=%d\n",
-         he_f1_bottom.index(), he_f1_bottom.prev().index(), he_f1_bottom.next().index(), he_f1_bottom.is_active());
-  printf("    he_f2_top: idx=%d, prev=%d, next=%d, active=%d\n",
-         he_f2_top.index(), he_f2_top.prev().index(), he_f2_top.next().index(), he_f2_top.is_active());
 
   // Deactivate faces
   face_top.deactivate();
@@ -382,30 +382,71 @@ Mesh_modifier_edge_collapse::collapse_edge(MergeCandidate & candidate)
   he_v2_v1.prev().twin().deactivate();
   he_v2_v1.prev().deactivate();
   he_v2_v1.deactivate();
-
-  printf("  DEBUG: After deactivation, deactivated half-edges: %d, %d, %d, %d, %d, %d\n",
-         he_v1_v2.next().twin().index(), he_v1_v2.next().index(), he_v1_v2.index(),
-         he_v2_v1.prev().twin().index(), he_v2_v1.prev().index(), he_v2_v1.index());
   // Deactivate vertex v2
   v2_iter.deactivate();
 
-  // Top edges re-linking
-  he_f1_associate.data().next = he_f1_bottom.index();
-  he_f1_bottom.data().prev = he_f1_associate.index();
-  he_f1_associate.data().prev = he_f1_bottom.next().index();
-  he_f1_bottom.next().data().next = he_f1_associate.index();
-  // Relink face f1
-  he_f1_associate.data().face = face_f1.index();
-  face_f1.data().half_edge = he_f1_associate.index();
+  // Check if this is a degenerate case where face_f1 == face_f2
+  bool is_degenerate = he_s1.is_equal(he_s2);
 
-  // Bottom edges re-linking
-  he_f2_associate.data().next = he_f2_top.prev().index();
-  he_f2_top.prev().data().prev = he_f2_associate.index();
-  he_f2_associate.data().prev = he_f2_top.index();
-  he_f2_top.data().next = he_f2_associate.index();
-  // Relink face f2
-  he_f2_associate.data().face = face_f2.index();
-  face_f2.data().half_edge = he_f2_associate.index();
+  if (is_degenerate) {
+    // printf("Degenerate case detected when collapsing edge (%d, %d). Merging faces %d and %d into one.\n",
+    //        v1, v2, face_f1.index(), face_f2.index());
+    // printf("Half-edges %d and %d are the same.\n", he_s1.index(), he_s2.index());
+    // printf("Associative half-edges: %d (f1) and %d (f2)\n", he_f1_associate.index(), he_f2_associate.index());
+    // f1 and f2 the same and s1, s2 the same
+    he_f1_associate.data().prev = he_s1.index();
+    he_s1.data().next = he_f1_associate.index();
+
+    he_f1_associate.data().next = he_f2_associate.index();
+    he_f2_associate.data().prev = he_f1_associate.index();
+
+    he_f2_associate.data().next = he_s2.index();
+    he_s2.data().prev = he_f2_associate.index();
+
+    he_f1_associate.data().face = face_f1.index();
+    he_f2_associate.data().face = face_f1.index();
+    face_f1.data().half_edge = he_f1_associate.index();
+
+    // // Run assertions to ensure connectivity is correct
+    // // Check f1 = f2
+    // assert(face_f1.is_equal(face_f2));
+    // // Check s1 = s2
+    // assert(he_s1.is_equal(he_s2));
+    // // Check that cycle of 3 half-edges is correct and closed
+    // const int he_start_index = he_f1_associate.index();
+    // auto he_iter = he_f1_associate;
+    // do{
+    //   // Print out half edge twin, origin, prev, next, face for debugging
+    //   std::cout << "Half-edge " << he_iter.index() << ": "
+    //             << "twin=" << he_iter.twin().index() << ", "
+    //             << "origin=" << he_iter.origin().index() << ", "
+    //             << "prev=" << he_iter.prev().index() << ", "
+    //             << "next=" << he_iter.next().index() << ", "
+    //             << "face=" << he_iter.face().index() << std::endl;
+    //   assert(he_iter.face().is_equal(face_f1));
+    //   he_iter = he_iter.next();
+    // }
+    // while(he_iter.index() != he_start_index);
+  }
+  else{
+    // Top edges re-linking
+    he_f1_associate.data().next = he_f1_bottom.index();
+    he_f1_bottom.data().prev = he_f1_associate.index();
+    he_f1_associate.data().prev = he_f1_bottom.next().index();
+    he_f1_bottom.next().data().next = he_f1_associate.index();
+    // Relink face f1
+    he_f1_associate.data().face = face_f1.index();
+    face_f1.data().half_edge = he_f1_associate.index();
+
+    // Bottom edges re-linking
+    he_f2_associate.data().next = he_f2_top.prev().index();
+    he_f2_top.prev().data().prev = he_f2_associate.index();
+    he_f2_associate.data().prev = he_f2_top.index();
+    he_f2_top.data().next = he_f2_associate.index();
+    // Relink face f2
+    he_f2_associate.data().face = face_f2.index();
+    face_f2.data().half_edge = he_f2_associate.index();
+  }
 
   // Update vertices to point to valid half-edges
   v1_iter.data().half_edge = he_f1_associate.twin().index();
@@ -430,15 +471,36 @@ Mesh_modifier_edge_collapse::collapse_edge(MergeCandidate & candidate)
 // Relabel the origin on all the half edges originating from v2
 void Mesh_modifier_edge_collapse::relabel_vertex(int old_id, int new_id)
 {
-  auto he = mesh().vertex_at(old_id).half_edge(); 
+  auto he = mesh().vertex_at(old_id).half_edge();
   const int he_start_index = he.index();
   do
   {
     assert(he.origin().index() == old_id);
-    he.data().origin = new_id; 
+    he.data().origin = new_id;
     he = he.twin().next();
   } while(he.index() != he_start_index);
-  
+
+}
+
+//
+// Check if the mesh modifier is properly initialized
+//
+void
+Mesh_modifier_edge_collapse::check_initialized()
+{
+  // Check if mesh has any vertices
+  if(mesh().n_active_vertices() == 0)
+  {
+    throw std::runtime_error(
+        "Mesh modifier error: No mesh loaded. Please load a mesh before attempting edge collapse operations.");
+  }
+
+  // Check if quadrics have been initialized
+  if(_vertex_quadrics.empty() || _vertex_quadrics.size() != (size_t)mesh().n_total_vertices())
+  {
+    throw std::runtime_error(
+        "Mesh modifier error: Mesh modifier not initialized. Please call initialize() before attempting edge collapse operations.");
+  }
 }
 
 //
@@ -478,6 +540,15 @@ Mesh_modifier_edge_collapse::get_all_neighbors_from_vertex(int vertex_id)
 std::vector<int>
 Mesh_modifier_edge_collapse::get_top_n_candidates(int n)
 {
+    // Check if mesh modifier is properly initialized
+    check_initialized();
+
+    // Guard against negative or zero values
+    if (n <= 0)
+    {
+        return std::vector<int>();  // Return empty vector
+    }
+
     std::vector<MergeCandidate> result;
     result.reserve(n);
 
@@ -526,7 +597,6 @@ Mesh_modifier_edge_collapse::get_top_n_candidates(int n)
 void
 Mesh_modifier_edge_collapse::invalidate_pair(VertexPair pair)
 {
-  VertexPair pair(v1, v2);
   _pair_versions[pair]++;
 }
 

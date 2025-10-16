@@ -162,10 +162,10 @@ int main(int argc, char **argv)
   // use modi to collapse 10 edges or until no valid pairs remain
   printf("\n=== Collapsing 10 Edges === \n");
   int collapses = 0;
-  while (collapses < 93 && modi.get_min_pair(candidate)) {
-    printf("Collapsing edge (%d, %d) with error %.9f [collapse #%d]\n",
-           candidate.pair.v1, candidate.pair.v2, candidate.error, collapses + 1);
+  while (collapses < 2800 && modi.get_min_pair(candidate)) {
     if (modi.collapse_edge(candidate)) {
+      printf("Collapsing edge (%d, %d) with error %.9f\n",
+             candidate.pair.v1, candidate.pair.v2, candidate.error);
       collapses++;
     }
   }

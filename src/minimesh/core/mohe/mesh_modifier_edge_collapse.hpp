@@ -204,6 +204,10 @@ private:
   // used internally after collapsing an edge
   void relabel_vertex(int old_id, int new_id);
 
+  // Check if the mesh modifier is properly initialized
+  // Throws runtime_error with helpful message if not initialized
+  void check_initialized();
+
   //
   // Valid pairs data structure
   //

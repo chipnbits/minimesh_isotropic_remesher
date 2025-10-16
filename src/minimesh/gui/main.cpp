@@ -40,6 +40,8 @@ GLUI * glui;
 int num_entities_to_simplify;
 //
 Eigen::Matrix3Xd displaced_vertex_positions;
+//
+bool show_collapse_overlay = false;  // Toggle state for visualization overlay
 }
 
 
@@ -149,6 +151,86 @@ void mouse_moved(int x, int y)
 }
 
 
+void update_collapse_visualization()
+{
+	if (!globalvars::show_collapse_overlay)
+	{
+		// Clear the visualization by resetting all vertices to invisible 
+		int n_active_verts = globalvars::mesh.n_active_vertices();
+		Eigen::Matrix4Xf vertex_colors(4, n_active_verts);
+		vertex_colors.setConstant(0.7f); // invisible (R=0, G=0, B=0, A=0)
+		globalvars::viewer.get_mesh_buffer().set_vertex_colors(vertex_colors);
+		printf("Color overlay cleared\n");
+		return;
+	}
+
+	// Show the top k candidates
+	// printf("Updating visualization: showing top %d edge collapse candidates\n", globalvars::num_entities_to_simplify);
+
+	// Get the top k candidates (returns half-edge indices)
+	std::vector<int> top_k_he = globalvars::modi_edge.get_top_n_candidates(globalvars::num_entities_to_simplify);
+	// printf("Found %zu candidates\n", top_k_he.size());
+
+	// Compute defragmentation maps to handle vertex indexing
+	mohecore::Mesh_connectivity::Defragmentation_maps defrag;
+	globalvars::mesh.compute_defragmention_maps(defrag);
+
+	// Prepare to color all vertices (default to white)
+	int n_active_verts = globalvars::mesh.n_active_vertices();
+	Eigen::Matrix4Xf vertex_colors(4, n_active_verts);
+	vertex_colors.setConstant(0.7f); // Default: gray (R=0.7, G=0.7, B=0.7, A=0.7)
+
+	// Color the vertices involved in top candidates
+	// Top candidate: green
+	// Rest: interpolate from yellow (rank 1) to red (last rank)
+	int num_candidates = static_cast<int>(top_k_he.size());
+
+	for(int rank = 0; rank < num_candidates; ++rank)
+	{
+		int he_idx = top_k_he[rank];
+		auto he = globalvars::mesh.half_edge_at(he_idx);
+		if(!he.is_active()) continue;
+
+		int origin_idx = he.origin().index();
+		int dest_idx = he.dest().index();
+
+		// Map to defragmented indices
+		int origin_defrag = defrag.old2new_vertices[origin_idx];
+		int dest_defrag = defrag.old2new_vertices[dest_idx];
+
+		// Determine color based on rank
+		float r, g, b, a;
+		if(rank < 1)
+		{
+			// Top candidate: green
+			r = 0.0f;
+			g = 1.0f;
+			b = 0.0f;
+			a = 1.0f;
+
+			// printf("Top candidate edge (%d, %d) \n", origin_idx, dest_idx);
+		}
+		else
+		{
+			// Rest of candidates: interpolate from yellow to red
+			// Yellow (1, 1, 0) -> Red (1, 0, 0)
+			float factor = static_cast<float>(rank - 1) / std::max(1.0f, static_cast<float>(num_candidates - 2));
+			r = 1.0f;
+			g = 1.0f;  // Decreases from 1 to 0
+			b = 0.0f;
+			a = 1.0f - 0.8f * factor; // Decreases from 1 to 0.2
+		}
+
+		// Apply the same color to both vertices of the edge
+		vertex_colors.col(origin_defrag) << r, g, b, a;
+		vertex_colors.col(dest_defrag) << r, g, b, a;
+	}
+
+	// Apply vertex colors to mesh buffer
+	globalvars::viewer.get_mesh_buffer().set_vertex_colors(vertex_colors);
+}
+
+
 void subdivide_pressed(int)
 {
 	printf("Subdivide button was pressed \n");
@@ -187,6 +269,71 @@ void subdivide_pressed(int)
 void simplify_pressed(int)
 {
 	printf("Simplify button was pressed to remove %d entities \n", globalvars::num_entities_to_simplify);
+
+	// Create a candidate structure to hold edge collapse information
+	mohecore::Mesh_modifier_edge_collapse::MergeCandidate candidate{0.0, {0, 0}, Eigen::Vector3d::Zero(), 0};
+
+	// Perform edge collapses up to the requested number
+	int collapses = 0;
+	while (collapses < globalvars::num_entities_to_simplify && globalvars::modi_edge.get_min_pair(candidate))
+	{
+		if (globalvars::modi_edge.collapse_edge(candidate))
+		{
+			printf("Collapsing edge (%d, %d) with error %.9f\n",
+			       candidate.pair.v1, candidate.pair.v2, candidate.error);
+			collapses++;
+		}
+	}
+
+	printf("Successfully collapsed %d edges\n", collapses);
+
+	if (collapses > 0)
+	{
+		// Rebuild the viewer with the modified mesh
+		mohecore::Mesh_connectivity::Defragmentation_maps defrag;
+		globalvars::mesh.compute_defragmention_maps(defrag);
+		globalvars::viewer.get_mesh_buffer().rebuild(globalvars::mesh, defrag);
+
+		// Reset displaced positions to match new mesh
+		globalvars::displaced_vertex_positions.resize(3, globalvars::mesh.n_active_vertices());
+		for(int i = 0; i < globalvars::mesh.n_active_vertices(); ++i)
+		{
+			globalvars::displaced_vertex_positions.col(i) = globalvars::mesh.vertex_at(i).xyz();
+		}
+
+		// Update the visualization if overlay is enabled
+		if (globalvars::show_collapse_overlay)
+		{
+			update_collapse_visualization();
+		}
+
+		glutPostRedisplay();
+	}
+	else
+	{
+		printf("No edges could be collapsed\n");
+	}
+}
+
+
+void show_top_candidates_pressed(int)
+{
+	// Toggle the color overlay on/off
+	globalvars::show_collapse_overlay = !globalvars::show_collapse_overlay;
+
+	if (globalvars::show_collapse_overlay)
+	{
+		printf("Color overlay enabled - showing top %d candidates\n", globalvars::num_entities_to_simplify);
+	}
+	else
+	{
+		printf("Color overlay disabled\n");
+	}
+
+	// Update the visualization based on new toggle state
+	update_collapse_visualization();
+
+	glutPostRedisplay();
 }
 
 
@@ -210,47 +357,14 @@ void show_spheres_pressed(int)
 }
 
 
-void show_top_candidates_pressed(int)
+void spinner_changed(int)
 {
-	printf("Showing top %d edge collapse candidates\n", globalvars::num_entities_to_simplify);
-
-	// Get the top k candidates (returns half-edge indices)
-	std::vector<int> top_k_he = globalvars::modi_edge.get_top_n_candidates(globalvars::num_entities_to_simplify);
-	printf("Found %zu candidates\n", top_k_he.size());
-
-	// Compute defragmentation maps to handle vertex indexing
-	mohecore::Mesh_connectivity::Defragmentation_maps defrag;
-	globalvars::mesh.compute_defragmention_maps(defrag);
-
-	// Prepare to color all vertices (default to white)
-	int n_active_verts = globalvars::mesh.n_active_vertices();
-	Eigen::Matrix4Xf vertex_colors(4, n_active_verts);
-	vertex_colors.setConstant(1.0f); // Default: white (R=1, G=1, B=1, A=1)
-
-	// Color the vertices involved in top 10 candidates
-	for(int he_idx : top_k_he)
+	// Update the visualization if overlay is enabled
+	if (globalvars::show_collapse_overlay)
 	{
-		auto he = globalvars::mesh.half_edge_at(he_idx);
-		if(!he.is_active()) continue;
-
-		int origin_idx = he.origin().index();
-		int dest_idx = he.dest().index();
-
-		// Map to defragmented indices
-		int origin_defrag = defrag.old2new_vertices[origin_idx];
-		int dest_defrag = defrag.old2new_vertices[dest_idx];
-
-		// Color origin vertex red
-		vertex_colors.col(origin_defrag) << 1.0f, 0.0f, 0.0f, 1.0f;
-
-		// Color destination vertex blue
-		vertex_colors.col(dest_defrag) << 0.0f, 0.0f, 1.0f, 1.0f;
+		update_collapse_visualization();
+		glutPostRedisplay();
 	}
-
-	// Apply vertex colors to mesh buffer
-	globalvars::viewer.get_mesh_buffer().set_vertex_colors(vertex_colors);
-
-	glutPostRedisplay();
 }
 
 }
@@ -353,15 +467,17 @@ int main(int argc, char * argv[])
 	// Add simplify button and a spinner to read how many entities to remove
 	//
 	globalvars::num_entities_to_simplify = 0;
-	GLUI_Spinner* spinner_simplify = globalvars::glui->add_spinner("# of entities to simplify", GLUI_SPINNER_INT, &globalvars::num_entities_to_simplify);
+	GLUI_Spinner* spinner_simplify = globalvars::glui->add_spinner("# of entities to simplify", GLUI_SPINNER_INT, &globalvars::num_entities_to_simplify, -1, freeglutcallback::spinner_changed);
 	spinner_simplify->set_alignment(GLUI_ALIGN_CENTER);
 	spinner_simplify->set_w(300);
-	
+	spinner_simplify->set_int_limits(0, 10000);  // Prevent negative values
+	spinner_simplify->set_speed(0.0001);  // Increment by 1 when clicking arrows
+
 	GLUI_Button* button_simplify = globalvars::glui->add_button("Simplify", -1, freeglutcallback::simplify_pressed);
 	button_simplify->set_w(200);
 
 	//
-	// Add button to visualize top 10 edge collapse candidates
+	// Add button to visualize top edge collapse candidates (toggle)
 	//
 	GLUI_Button* button_visualize = globalvars::glui->add_button("Visualize", -1, freeglutcallback::show_top_candidates_pressed);
 	button_visualize->set_w(200);
