@@ -29,6 +29,8 @@ set(SOURCE_FILES
   mohe/mesh_modifier_loop_subdivision.cpp
   mohe/mesh_modifier_edge_collapse.hpp
   mohe/mesh_modifier_edge_collapse.cpp
+  mohe/mesh_modifier_arap.hpp
+  mohe/mesh_modifier_arap.cpp
   mohe/mesh_analysis.hpp
   mohe/mesh_analysis.cpp
  )

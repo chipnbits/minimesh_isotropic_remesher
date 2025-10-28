@@ -12,6 +12,7 @@
 #include <minimesh/core/mohe/mesh_connectivity.hpp>
 #include <minimesh/core/mohe/mesh_modifier_loop_subdivision.hpp>
 #include <minimesh/core/mohe/mesh_modifier_edge_collapse.hpp>
+#include <minimesh/core/mohe/mesh_modifier_arap.hpp>
 #include <minimesh/core/mohe/mesh_io.hpp>
 #include <minimesh/core/util/assert.hpp>
 #include <minimesh/core/util/foldertools.hpp>
@@ -32,6 +33,7 @@ namespace globalvars
 Mesh_viewer viewer;
 mohecore::Mesh_connectivity mesh;
 mohecore::Mesh_modifier_edge_collapse modi_edge(mesh);
+mohecore::Mesh_modifier_arap modi_arap(mesh);
 //
 int glut_main_window_id;
 //
@@ -39,9 +41,10 @@ GLUI * glui;
 //
 int num_entities_to_simplify;
 //
-Eigen::Matrix3Xd displaced_vertex_positions;
+Eigen::Matrix3Xd deformed_vertex_positions;   // Current displayed vertex positions (for mesh buffer)
 //
-bool show_collapse_overlay = false;  // Toggle state for visualization overlay
+bool show_collapse_overlay = false;  // Toggle state for edge collapse visualization
+int deform_mode = 0;                 // Toggle state for deform mode (enables anchor selection and ARAP)
 }
 
 
@@ -50,6 +53,9 @@ bool show_collapse_overlay = false;  // Toggle state for visualization overlay
 // ======================================================
 namespace freeglutcallback
 {
+
+// Forward declarations
+void update_anchor_visualization();
 
 void draw()
 {
@@ -101,7 +107,39 @@ void mouse_pushed(int button, int state, int x, int y)
 		bool did_user_click;
 		globalvars::viewer.get_and_clear_vertex_selection(did_user_click, clicked_on_vertex);
 		if(did_user_click)
+		{
 			printf("User just clicked on vertex %d \n", clicked_on_vertex);
+
+			// Only toggle anchors when in deform mode AND in select mode
+			if(globalvars::deform_mode && globalvars::viewer.get_mouse_function() == Mesh_viewer::MOUSE_SELECT)
+			{
+				// ARAP: Toggle anchor on/off for clicked vertex
+				if(globalvars::modi_arap.is_anchor(clicked_on_vertex))
+				{
+					// Remove anchor
+					if(globalvars::modi_arap.remove_anchor(clicked_on_vertex))
+					{
+						printf("Removed vertex %d as anchor\n", clicked_on_vertex);
+
+						// Update visualization (automatically shown in deform mode)
+						update_anchor_visualization();
+						should_redraw = true;
+					}
+				}
+				else
+				{
+					// Add anchor
+					if(globalvars::modi_arap.add_anchor(clicked_on_vertex))
+					{
+						printf("Added vertex %d as anchor\n", clicked_on_vertex);
+
+						// Update visualization (automatically shown in deform mode)
+						update_anchor_visualization();
+						should_redraw = true;
+					}
+				}
+			}
+		}
 	}
 
 	if(should_redraw)
@@ -126,23 +164,39 @@ void mouse_moved(int x, int y)
 		int pulled_vert;
 		globalvars::viewer.get_and_clear_vertex_displacement(has_pull_performed, pull_amount, pulled_vert);
 
-		if(has_pull_performed)
+		if(has_pull_performed && globalvars::viewer.get_mouse_function() == Mesh_viewer::MOUSE_MOVE_VERTEX)
 		{
 			force_assert(pulled_vert != Mesh_viewer::invalid_index);
 
-			// Get current displacement and apply the change to the mesh renderer
+			// Check if we're in deform mode and the pulled vertex is an anchor
+			if(globalvars::deform_mode && globalvars::modi_arap.is_anchor(pulled_vert))
+			{
+				// ARAP deformation: Move anchor and deform mesh
+				Eigen::Vector3d new_position = globalvars::deformed_vertex_positions.col(pulled_vert) + pull_amount.cast<double>();
 
-			globalvars::displaced_vertex_positions.col(pulled_vert) += pull_amount.cast<double>();
-			// If the mesh was defragmented, you should have done:
-			// Mesh_connectivity::Defragmentation_maps defrag;
-			// globalvars::mesh.compute_defragmention_maps(defrag);
-			// displaced_vertex_positions.col(defrag.old2new_vertex[j]) += pull_amount.cast<double>();
+				// Perform ARAP deformation
+				if(globalvars::modi_arap.deform_with_anchor(pulled_vert, new_position, globalvars::deformed_vertex_positions))
+				{
+					// Update positions in the viewer
+					globalvars::viewer.get_mesh_buffer().set_vertex_positions(globalvars::deformed_vertex_positions.cast<float>());
+					should_redraw = true;
+				}
+			}
+			else
+			{
+				// Naive vertex movement (original behavior when not in deform mode)
+				globalvars::deformed_vertex_positions.col(pulled_vert) += pull_amount.cast<double>();
+				// If the mesh was defragmented, you should have done:
+				// Mesh_connectivity::Defragmentation_maps defrag;
+				// globalvars::mesh.compute_defragmention_maps(defrag);
+				// deformed_vertex_positions.col(defrag.old2new_vertex[j]) += pull_amount.cast<double>();
 
-			// update positions (only the viewer)
-			globalvars::viewer.get_mesh_buffer().set_vertex_positions(globalvars::displaced_vertex_positions.cast<float>());
+				// update positions (only the viewer)
+				globalvars::viewer.get_mesh_buffer().set_vertex_positions(globalvars::deformed_vertex_positions.cast<float>());
 
-			// Must rerender now.
-			should_redraw = true;
+				// Must rerender now.
+				should_redraw = true;
+			}
 		}
 	}
 
@@ -250,11 +304,11 @@ void subdivide_pressed(int)
 		globalvars::mesh.compute_defragmention_maps(defrag);
 		globalvars::viewer.get_mesh_buffer().rebuild(globalvars::mesh, defrag);
 
-		// Reset displaced positions to match new mesh
-		globalvars::displaced_vertex_positions.resize(3, globalvars::mesh.n_active_vertices());
-		for(int i = 0; i < globalvars::mesh.n_active_vertices(); ++i)
+		// Reset deformed positions to match new mesh
+		globalvars::deformed_vertex_positions.resize(3, globalvars::mesh.n_total_vertices());
+		for(int i = 0; i < globalvars::mesh.n_total_vertices(); ++i)
 		{
-			globalvars::displaced_vertex_positions.col(i) = globalvars::mesh.vertex_at(i).xyz();
+			globalvars::deformed_vertex_positions.col(i) = globalvars::mesh.vertex_at(i).xyz();
 		}
 
 		glutPostRedisplay();
@@ -294,11 +348,11 @@ void simplify_pressed(int)
 		globalvars::mesh.compute_defragmention_maps(defrag);
 		globalvars::viewer.get_mesh_buffer().rebuild(globalvars::mesh, defrag);
 
-		// Reset displaced positions to match new mesh
-		globalvars::displaced_vertex_positions.resize(3, globalvars::mesh.n_active_vertices());
-		for(int i = 0; i < globalvars::mesh.n_active_vertices(); ++i)
+		// Reset deformed positions to match new mesh
+		globalvars::deformed_vertex_positions.resize(3, globalvars::mesh.n_total_vertices());
+		for(int i = 0; i < globalvars::mesh.n_total_vertices(); ++i)
 		{
-			globalvars::displaced_vertex_positions.col(i) = globalvars::mesh.vertex_at(i).xyz();
+			globalvars::deformed_vertex_positions.col(i) = globalvars::mesh.vertex_at(i).xyz();
 		}
 
 		// Update the visualization if overlay is enabled
@@ -337,6 +391,7 @@ void show_top_candidates_pressed(int)
 }
 
 
+
 void show_spheres_pressed(int)
 {
 	//
@@ -365,6 +420,67 @@ void spinner_changed(int)
 		update_collapse_visualization();
 		glutPostRedisplay();
 	}
+}
+
+
+void update_anchor_visualization()
+{
+	// Clear visualization if deform mode is off
+	if(!globalvars::deform_mode)
+	{
+		Eigen::VectorXi empty_indices(0);
+		Eigen::Matrix4Xf empty_colors(4, 0);
+		globalvars::viewer.get_mesh_buffer().set_colorful_spheres(empty_indices, empty_colors);
+		return;
+	}
+
+	// Get all anchor vertex indices from ARAP modifier
+	std::vector<int> anchors = globalvars::modi_arap.get_anchors();
+
+	// If no anchors, clear visualization
+	if(anchors.empty())
+	{
+		Eigen::VectorXi empty_indices(0);
+		Eigen::Matrix4Xf empty_colors(4, 0);
+		globalvars::viewer.get_mesh_buffer().set_colorful_spheres(empty_indices, empty_colors);
+		return;
+	}
+
+	// Convert vector to Eigen format
+	Eigen::VectorXi sphere_indices(anchors.size());
+	for(size_t i = 0; i < anchors.size(); ++i)
+	{
+		sphere_indices[i] = anchors[i];
+	}
+
+	// Create red color for all anchors (RGBA: red=1, green=0, blue=0, alpha=1)
+	Eigen::Matrix4Xf sphere_colors(4, anchors.size());
+	for(size_t i = 0; i < anchors.size(); ++i)
+	{
+		sphere_colors.col(i) << 0.0f, 0.0f, 1.0f, 1.0f;  // Blue
+	}
+
+	// Set the colored spheres
+	globalvars::viewer.get_mesh_buffer().set_colorful_spheres(sphere_indices, sphere_colors);
+}
+
+
+void deform_mode_changed(int)
+{
+	// When deform mode is toggled, update anchor visualization
+	if(globalvars::deform_mode)
+	{
+		printf("Deform mode enabled - anchors will be visualized\n");
+		update_anchor_visualization();
+	}
+	else
+	{
+		printf("Deform mode disabled - anchor visualization turned off\n");
+		// Clear anchor visualization (stub for now)
+		update_anchor_visualization();
+	}
+
+	glutPostRedisplay();
 }
 
 }
@@ -430,6 +546,9 @@ int main(int argc, char * argv[])
 	// Setup background modifier for edge collapse
 	globalvars::modi_edge.initialize();
 
+	// Setup ARAP modifier
+	globalvars::modi_arap.initialize();
+
 	//
 	// Add radio buttons to see which mesh components to view
 	// Please view GLUI's user manual to learn more.
@@ -483,6 +602,14 @@ int main(int argc, char * argv[])
 	button_visualize->set_w(200);
 
 	//
+	// Add ARAP Deformation Panel
+	//
+	GLUI_Panel* panel_arap = globalvars::glui->add_panel("ARAP Deformation");
+
+	// Add Deform checkbox that controls the entire deformation mode
+	GLUI_Checkbox* checkbox_deform = globalvars::glui->add_checkbox_to_panel(panel_arap, "Deform", &globalvars::deform_mode, -1, freeglutcallback::deform_mode_changed);
+
+	//
 	// Add show spheres button to demo how to draw spheres on top of the vertices
 	//
 	globalvars::glui->add_button("Demo Showing Spheres", -1, freeglutcallback::show_spheres_pressed);
@@ -490,10 +617,10 @@ int main(int argc, char * argv[])
 	//
 	// Save the initial vertex positions
 	//
-	globalvars::displaced_vertex_positions.resize(3,globalvars::mesh.n_active_vertices() );
-	for (int i = 0 ; i < globalvars::mesh.n_active_vertices() ; ++i)
+	globalvars::deformed_vertex_positions.resize(3, globalvars::mesh.n_total_vertices());
+	for(int i = 0; i < globalvars::mesh.n_total_vertices(); ++i)
 	{
-		globalvars::displaced_vertex_positions.col(i) = globalvars::mesh.vertex_at(i).xyz();
+		globalvars::deformed_vertex_positions.col(i) = globalvars::mesh.vertex_at(i).xyz();
 	}
 
 	// Sync all glui variables
