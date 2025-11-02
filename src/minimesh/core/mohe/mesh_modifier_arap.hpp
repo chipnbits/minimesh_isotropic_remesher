@@ -10,8 +10,8 @@
 
 
 #include <string>
-#include <vector>
 #include <unordered_set>
+#include <vector>
 
 #include <Eigen/Core>
 
@@ -84,9 +84,9 @@ public:
   // Returns true if deformation was successful
   // NOTE: This is a stub - actual ARAP implementation to be added later
   //       For now, just copies original positions and updates the anchor
-  bool deform_with_anchor(const int vertex_index,
-                          const Eigen::Vector3d& new_position,
-                          Eigen::Matrix3Xd& deformed_positions);
+  bool deform_with_temp_anchor(const int vertex_index,
+      const Eigen::Vector3d & new_position,
+      Eigen::Matrix3Xd & deformed_positions);
 
 
 private:

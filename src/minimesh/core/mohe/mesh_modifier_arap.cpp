@@ -1,6 +1,6 @@
+#include <algorithm>
 #include <minimesh/core/mohe/mesh_modifier_arap.hpp>
 #include <minimesh/core/util/assert.hpp>
-#include <algorithm>
 
 namespace minimesh
 {
@@ -223,24 +223,26 @@ Mesh_modifier_arap::get_anchors()
   return anchors;
 }
 
+/* ARAP Deformation 
+Uses the set anchors in original static position with one temporary anchor moved to a new position.
 
+Needs to modify the passed set of deformed positions to reflect the new positions of all vertices after deformation.
+*/
 bool
-Mesh_modifier_arap::deform_with_anchor(const int vertex_index,
-                                        const Eigen::Vector3d& new_position,
-                                        Eigen::Matrix3Xd& deformed_positions)
+Mesh_modifier_arap::deform_with_temp_anchor(const int temp_anchor_index,
+    const Eigen::Vector3d & pulled_position,
+    Eigen::Matrix3Xd & deformed_positions)
 {
-  // Check if vertex is an anchor
-  if(!is_anchor(vertex_index))
+  // Check if vertex is active
+  Mesh_connectivity::Vertex_iterator v_pulled = mesh().vertex_at(temp_anchor_index);
+  if(!v_pulled.is_active())
   {
     return false;
   }
 
-  // Check if vertex is active
-  Mesh_connectivity::Vertex_iterator v = mesh().vertex_at(vertex_index);
-  if(!v.is_active())
-  {
-    return false;
-  }
+  printf("Deformed mesh with anchor vertex %d \n", temp_anchor_index);
+        printf(
+            " - New anchor position: (%f, %f, %f) \n", pulled_position.x(), pulled_position.y(), pulled_position.z());
 
   // TODO: Implement ARAP deformation algorithm
   // For now, just copy original positions and update the anchor (naive stub)
@@ -256,19 +258,16 @@ Mesh_modifier_arap::deform_with_anchor(const int vertex_index,
     deformed_positions.resize(3, mesh().n_total_vertices());
   }
 
-  // Copy current mesh positions
-  for(int i = 0; i < mesh().n_total_vertices(); ++i)
-  {
-    Mesh_connectivity::Vertex_iterator vi = mesh().vertex_at(i);
-    if(vi.is_active())
-    {
-      deformed_positions.col(i) = vi.xyz();
-    }
-  }
-
-  // Update the anchor position (naive stub - ARAP will do proper deformation)
-  deformed_positions.col(vertex_index) = new_position;
-
+  // // Copy current mesh positions
+  // for(int i = 0; i < mesh().n_total_vertices(); ++i)
+  // {
+  //   Mesh_connectivity::Vertex_iterator vi = mesh().vertex_at(i);
+  //   if(vi.is_active())
+  //   {
+  //     deformed_positions.col(i) = vi.xyz();
+  //   }
+  // }
+  
   return true;
 }
 
