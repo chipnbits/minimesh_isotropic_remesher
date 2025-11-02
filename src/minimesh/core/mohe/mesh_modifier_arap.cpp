@@ -223,15 +223,15 @@ Mesh_modifier_arap::get_anchors()
   return anchors;
 }
 
-/* ARAP Deformation 
+/* Core ARAP Deformation Solver (Private)
 Uses the set anchors in original static position with one temporary anchor moved to a new position.
-
-Needs to modify the passed set of deformed positions to reflect the new positions of all vertices after deformation.
+Assumes output matrix is already properly sized and initialized with positions.
+All public deformation methods delegate to this.
 */
 bool
-Mesh_modifier_arap::deform_with_temp_anchor(const int temp_anchor_index,
+Mesh_modifier_arap::_solve_arap(const int temp_anchor_index,
     const Eigen::Vector3d & pulled_position,
-    Eigen::Matrix3Xd & deformed_positions)
+    Eigen::Matrix3Xd & output)
 {
   // Check if vertex is active
   Mesh_connectivity::Vertex_iterator v_pulled = mesh().vertex_at(temp_anchor_index);
@@ -241,33 +241,87 @@ Mesh_modifier_arap::deform_with_temp_anchor(const int temp_anchor_index,
   }
 
   printf("Deformed mesh with anchor vertex %d \n", temp_anchor_index);
-        printf(
-            " - New anchor position: (%f, %f, %f) \n", pulled_position.x(), pulled_position.y(), pulled_position.z());
+  printf(
+      " - New anchor position: (%f, %f, %f) \n", pulled_position.x(), pulled_position.y(), pulled_position.z());
 
   // TODO: Implement ARAP deformation algorithm
-  // For now, just copy original positions and update the anchor (naive stub)
+  // For now, this is a stub that doesn't modify positions (naive stub)
   // The actual ARAP solver will:
-  // 1. Build and factorize the system matrix (in initialize())
+  // 1. Use the prefactorized system matrix (from initialize())
   // 2. Update constraint for moved anchor
   // 3. Solve for all vertex positions to minimize ARAP energy
-  // 4. Store results in deformed_positions
+  // 4. Store results in output matrix
 
-  // Ensure deformed_positions is properly sized
-  if(deformed_positions.cols() != mesh().n_total_vertices())
+  return true;
+}
+
+
+/* ARAP Deformation - In-place version (for GUI performance)
+Uses the set anchors in original static position with one temporary anchor moved to a new position.
+Modifies the passed set of deformed positions in-place (no allocation).
+*/
+bool
+Mesh_modifier_arap::deform_with_temp_anchor(const int vertex_index,
+    const Eigen::Vector3d & new_position,
+    Eigen::Matrix3Xd & deformed_positions)
+{
+  // Direct pass-through to solver (GUI provides pre-allocated matrix)
+  return _solve_arap(vertex_index, new_position, deformed_positions);
+}
+
+
+/* ARAP Deformation - Returning version (for testing & convenience)
+Allocates a new matrix, initializes with current mesh positions, computes deformation, and returns it.
+*/
+Eigen::Matrix3Xd
+Mesh_modifier_arap::compute_deformation(const int vertex_index,
+    const Eigen::Vector3d & new_position)
+{
+  // Allocate new matrix
+  Eigen::Matrix3Xd result(3, mesh().n_total_vertices());
+
+  // Initialize with current mesh positions
+  for(int i = 0; i < mesh().n_total_vertices(); ++i)
   {
-    deformed_positions.resize(3, mesh().n_total_vertices());
+    Mesh_connectivity::Vertex_iterator vi = mesh().vertex_at(i);
+    if(vi.is_active())
+    {
+      result.col(i) = vi.xyz();
+    }
   }
 
-  // // Copy current mesh positions
-  // for(int i = 0; i < mesh().n_total_vertices(); ++i)
-  // {
-  //   Mesh_connectivity::Vertex_iterator vi = mesh().vertex_at(i);
-  //   if(vi.is_active())
-  //   {
-  //     deformed_positions.col(i) = vi.xyz();
-  //   }
-  // }
-  
+  // Solve
+  bool success = _solve_arap(vertex_index, new_position, result);
+
+  if(!success)
+  {
+    throw std::runtime_error("ARAP deformation failed for vertex " + std::to_string(vertex_index));
+  }
+
+  return result;
+}
+
+
+/* ARAP Deformation - Mesh-modifying version (for CLI & file output)
+Computes deformation in a temporary matrix and applies directly to mesh vertex positions.
+*/
+bool
+Mesh_modifier_arap::apply_deformation_to_mesh(const int vertex_index,
+    const Eigen::Vector3d & new_position)
+{
+
+  Eigen::Matrix3Xd deformed_positions = compute_deformation(vertex_index, new_position);
+
+  // Apply deformed positions back to mesh
+  for(int i = 0; i < mesh().n_total_vertices(); ++i)
+  {
+    Mesh_connectivity::Vertex_iterator vi = mesh().vertex_at(i);
+    if(vi.is_active())
+    {
+      vi.data().xyz = deformed_positions.col(i);
+    }
+  }
+
   return true;
 }
 

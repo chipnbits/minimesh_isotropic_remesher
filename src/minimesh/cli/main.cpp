@@ -11,6 +11,7 @@
 #include <string>
 #include <chrono>
 #include <cmath>
+#include <unordered_map> 
 
 #include <minimesh/core/util/assert.hpp>
 #include <minimesh/core/util/macros.hpp>
@@ -19,6 +20,7 @@
 #include <minimesh/core/mohe/mesh_io.hpp>
 #include <minimesh/core/mohe/mesh_modifier_loop_subdivision.hpp>
 #include <minimesh/core/mohe/mesh_modifier_edge_collapse.hpp>
+#include <minimesh/core/mohe/mesh_modifier_arap.hpp>
 #include <minimesh/core/mohe/mesh_analysis.hpp>
 
 using namespace minimesh;
@@ -29,6 +31,127 @@ using namespace minimesh;
 
 namespace  // Mark the start of anonymous namespace (cant be called from outside)
 {
+
+// Writes OBJ (and optional VTK) with a consistent naming scheme and sanity check.
+// If `counter` is provided, it's incremented and used to suffix the file name.
+// Otherwise a per-label static counter is used.
+// Returns the full OBJ path written.
+std::string write_mesh_checked(
+    mohecore::Mesh_connectivity& mesh,
+    mohecore::Mesh_io& io,
+    const std::string& label,
+    int* counter = nullptr,
+    bool also_vtk = false)
+{
+  force_assert(mesh.check_sanity_slowly());
+
+  std::string base = "exports/" + label;
+
+  if (counter) {
+    if (*counter > 0) base += "_" + std::to_string(*counter);
+    ++(*counter);
+  } else {
+    static std::unordered_map<std::string, int> per_label_counts;
+    int& c = per_label_counts[label];
+    if (c > 0) base += "_" + std::to_string(c);
+    ++c;
+  }
+
+  const std::string obj_path = base + ".obj";
+  printf("writing %s\n", obj_path.c_str());
+  io.write_obj(obj_path);
+
+  if (also_vtk) {
+    const std::string vtk_path = base + ".vtk";
+    printf("writing %s\n", vtk_path.c_str());
+    io.write_vtk(vtk_path);
+  }
+
+  return obj_path;
+}
+
+///
+/// Test ARAP deformation functionality
+///
+void test_arap_deformation(mohecore::Mesh_connectivity& mesh, mohecore::Mesh_io& io)
+{
+  printf("\n=== ARAP DEFORMATION TEST === \n");
+
+  // Initialize ARAP modifier
+  mohecore::Mesh_modifier_arap modi_arap(mesh);
+  modi_arap.initialize();
+  printf("ARAP modifier initialized.\n");
+
+  // Add some anchor points (first few vertices)
+  printf("\nAdding anchor points...\n");
+  for(int i = 0; i < 5 && i < mesh.n_active_vertices(); ++i)
+  {
+    if(modi_arap.add_anchor(i))
+    {
+      auto v = mesh.vertex_at(i);
+      Eigen::Vector3d pos = v.xyz();
+      printf("  - Anchor %d at position (%.3f, %.3f, %.3f)\n", i, pos.x(), pos.y(), pos.z());
+    }
+  }
+
+  std::vector<int> anchors = modi_arap.get_anchors();
+  printf("Total anchors set: %d\n", static_cast<int>(anchors.size()));
+
+  // Test 1: compute_deformation() - Returns new matrix without modifying mesh
+  printf("\n--- Test 1: compute_deformation() ---\n");
+  int test_vertex = 10;  // Pick a vertex to pull
+  if(test_vertex < mesh.n_active_vertices())
+  {
+    auto v = mesh.vertex_at(test_vertex);
+    Eigen::Vector3d original_pos = v.xyz();
+    Eigen::Vector3d pulled_pos = original_pos + Eigen::Vector3d(0.5, 0.5, 0.0);
+
+    printf("Testing compute_deformation() on vertex %d\n", test_vertex);
+    printf("  Original position: (%.3f, %.3f, %.3f)\n", original_pos.x(), original_pos.y(), original_pos.z());
+    printf("  Target position: (%.3f, %.3f, %.3f)\n", pulled_pos.x(), pulled_pos.y(), pulled_pos.z());
+
+    try
+    {
+      Eigen::Matrix3Xd deformed = modi_arap.compute_deformation(test_vertex, pulled_pos);
+      printf("  ✓ Deformation computed successfully (mesh unchanged)\n");
+      printf("  Deformed matrix size: 3 x %ld\n", deformed.cols());
+    }
+    catch(const std::exception& e)
+    {
+      printf("  ✗ Deformation failed: %s\n", e.what());
+    }
+  }
+
+  // Test 2: apply_deformation_to_mesh() - Modifies mesh directly
+  printf("\n--- Test 2: apply_deformation_to_mesh() ---\n");
+  test_vertex = 10;  
+  if(test_vertex < mesh.n_active_vertices())
+  {
+    auto v = mesh.vertex_at(test_vertex);
+    Eigen::Vector3d original_pos = v.xyz();
+    Eigen::Vector3d pulled_pos = original_pos + Eigen::Vector3d(0.5, 0.5, 0.0);
+
+    printf("Testing apply_deformation_to_mesh() on vertex %d\n", test_vertex);
+    printf("  Original position: (%.3f, %.3f, %.3f)\n", original_pos.x(), original_pos.y(), original_pos.z());
+    printf("  Target position: (%.3f, %.3f, %.3f)\n", pulled_pos.x(), pulled_pos.y(), pulled_pos.z());
+
+    if(modi_arap.apply_deformation_to_mesh(test_vertex, pulled_pos))
+    {
+      printf("  ✓ Deformation applied to mesh successfully\n");
+
+      // Write out the deformed mesh
+      printf("\nWriting deformed mesh...\n");
+      write_mesh_checked(mesh, io, "arap_deformed", nullptr, false);
+      printf("Deformed mesh written to exports/arap_deformed.{obj,vtk}\n");
+    }
+    else
+    {
+      printf("  ✗ Deformation failed\n");
+    }
+  }
+
+  printf("\n=== ARAP TEST COMPLETE === \n");
+}
 
 //
 // Create an example mesh file that we can read later.
@@ -83,7 +206,7 @@ int main(int argc, char **argv)
   mohecore::Mesh_connectivity mesh;
   mohecore::Mesh_io io(mesh);
 
-  printf("=== MESH EDGE COLLAPSE PRIORITY QUEUE TEST === \n");
+  printf("=== MESH DEFORMATION TESTING === \n");
 
   // Check if filename provided as argument
   std::string filename;
@@ -100,77 +223,10 @@ int main(int argc, char **argv)
   printf("reading %s \n", filename.c_str());
   io.read_obj_general(filename);
 
-  // A lambda for checking the mesh sanity and writing it
-  int write_count = 0;
-  auto check_sanity_and_write_mesh = [&io, &mesh, &write_count](const std::string &label = "mesh") {
-    force_assert(mesh.check_sanity_slowly());
-
-    std::string base = "exports/" + label;
-    if (write_count > 0) base += "_" + std::to_string(write_count);
-
-    printf("writing %s.vtk and %s.obj\n", base.c_str(), base.c_str());
-    io.write_obj(base + ".obj");
-    io.write_vtk(base + ".vtk");
-
-    ++write_count;
-
-    // return the filepath
-    return base + ".obj";
-  };
-
   printf("Total vertices: %d \n", mesh.n_active_vertices());
   printf("Total faces: %d \n", mesh.n_active_faces());
   printf("Total half-edges: %d \n", mesh.n_active_half_edges());
 
-  // Initialize the mesh simplifier (computes quadrics and builds valid pairs)
-  printf("\n=== Initializing Mesh Simplifier === \n");
-  mohecore::Mesh_modifier_edge_collapse modi(mesh);
-  modi.initialize();
-  printf("Mesh simplifier initialized (quadrics and valid pairs computed).\n");
-
-  // Count valid pairs by popping all entries
-  int num_valid_pairs = 0;
-  int num_edges = mesh.n_active_half_edges() / 2;
-  mohecore::Mesh_modifier_edge_collapse::MergeCandidate candidate{0.0, {0, 0}, Eigen::Vector3d::Zero(), 0};
-
-  while (modi.get_min_pair(candidate)) {
-    num_valid_pairs++;
-  }
-
-  printf("Valid pairs found: %d\n", num_valid_pairs);
-  printf("Expected (number of edges): %d\n", num_edges);
-
-  if (num_valid_pairs == num_edges) {
-    printf("✓ SUCCESS: Valid pairs count matches edge count!\n");
-  } else {
-    printf("✗ MISMATCH: Valid pairs count does not match edge count!\n");
-  }
-
-  // Print first few candidates
-  printf("\n=== First 5 Edge Collapse Candidates (by QEM error) === \n");
-  modi.initialize(); // Re-initialize since we popped everything
-
-  for (int i = 0; i < 10 && modi.get_min_pair(candidate); ++i) {
-    int v1 = candidate.pair.v1;
-    int v2 = candidate.pair.v2;
-    double error = candidate.error;
-    printf("Candidate %d: Edge (%d, %d), error=%.9f, x_opt=(%.3f, %.3f, %.3f)\n",
-           i + 1, v1, v2, error,
-           candidate.x_opt[0], candidate.x_opt[1], candidate.x_opt[2]);
-  }
-
-  // use modi to collapse 10 edges or until no valid pairs remain
-  printf("\n=== Collapsing 10 Edges === \n");
-  int collapses = 0;
-  while (collapses < 2800 && modi.get_min_pair(candidate)) {
-    if (modi.collapse_edge(candidate)) {
-      printf("Collapsing edge (%d, %d) with error %.9f\n",
-             candidate.pair.v1, candidate.pair.v2, candidate.error);
-      collapses++;
-    }
-  }
-
-  printf("\n");
-  check_sanity_and_write_mesh("cli_mesh");
+  test_arap_deformation(mesh, io);
   return 0;
 } // end of main()

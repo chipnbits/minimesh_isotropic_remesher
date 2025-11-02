@@ -77,7 +77,7 @@ public:
   // Get all anchor vertex indices (returns vector for convenience)
   std::vector<int> get_anchors();
 
-  // Perform ARAP deformation by moving an anchor
+  // Perform ARAP deformation by moving an anchor (in-place version for GUI performance)
   // vertex_index: the anchor to move
   // new_position: the new position for the anchor
   // deformed_positions: output matrix (3 x n_vertices) with deformed positions
@@ -88,6 +88,22 @@ public:
       const Eigen::Vector3d & new_position,
       Eigen::Matrix3Xd & deformed_positions);
 
+  // Compute ARAP deformation and return new positions (convenience version for testing)
+  // vertex_index: the anchor to move
+  // new_position: the new position for the anchor
+  // Returns: Matrix (3 x n_vertices) with deformed positions
+  // Throws: std::runtime_error if deformation fails
+  Eigen::Matrix3Xd compute_deformation(const int vertex_index,
+      const Eigen::Vector3d & new_position);
+
+  // Apply ARAP deformation directly to mesh vertex positions (for CLI & file output)
+  // vertex_index: the anchor to move
+  // new_position: the new position for the anchor
+  // Returns true if deformation was successful
+  // NOTE: This modifies the actual mesh vertex positions in-place
+  bool apply_deformation_to_mesh(const int vertex_index,
+      const Eigen::Vector3d & new_position);
+
 
 private:
   // pointer to the mesh that we are working on.
@@ -95,6 +111,15 @@ private:
 
   // Boolean array tracking which vertices are anchors (O(1) lookup)
   std::vector<bool> _is_anchor;
+
+  // Core ARAP solver - all public deformation methods delegate to this
+  // vertex_index: the temporary anchor to move
+  // new_position: the new position for the temporary anchor
+  // output: output matrix (3 x n_vertices) with deformed positions
+  // Returns true if deformation was successful
+  bool _solve_arap(const int vertex_index,
+      const Eigen::Vector3d & new_position,
+      Eigen::Matrix3Xd & output);
 };
 
 
