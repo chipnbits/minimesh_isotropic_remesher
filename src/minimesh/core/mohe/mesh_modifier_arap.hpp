@@ -26,6 +26,12 @@ namespace mohecore
 class Mesh_modifier_arap
 {
 public:
+
+  struct Neighbor {
+    int index;      // Neighbor vertex index
+    double weight;  // Cotangent weight w_ij
+  };
+
   // Trivial constructor
   Mesh_modifier_arap(Mesh_connectivity & mesh_in)
   : _m(mesh_in)
@@ -59,6 +65,10 @@ public:
 
   // Initialize ARAP structures (call this after mesh is loaded)
   void initialize();
+
+  // Build adjacency list with cotangent weights for all vertices
+  // This computes w_ij = (cot(alpha) + cot(beta)) / 2 for each edge
+  void build_cotangent_weights();
 
   // Add a vertex as an anchor point
   // Returns true if successful, false if vertex is already an anchor
@@ -111,6 +121,12 @@ private:
 
   // Boolean array tracking which vertices are anchors (O(1) lookup)
   std::vector<bool> _is_anchor;
+
+  // Adjacency list with cotangent weights
+  // adj[i] holds (neighbor_index, cotangent_weight) for each neighbor of vertex i
+  std::vector<std::vector<Neighbor>> _adj;
+
+  Eigen::MatrixXd _vertices_rest;    // Rest positions of vertices
 
   // Core ARAP solver - all public deformation methods delegate to this
   // vertex_index: the temporary anchor to move

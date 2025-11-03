@@ -1,3 +1,4 @@
+#include <Eigen/Geometry>
 #include <algorithm>
 #include <minimesh/core/mohe/mesh_modifier_arap.hpp>
 #include <minimesh/core/util/assert.hpp>
@@ -44,91 +45,110 @@ Mesh_modifier_arap::get_halfedge_between_vertices(const int v0, const int v1)
   return answer;
 }
 
-
-bool
-Mesh_modifier_arap::flip_edge(const int he_index)
-{
-  //
-  // Take a reference to all involved entities
-  //
-
-  // HALF-EDGES
-  Mesh_connectivity::Half_edge_iterator he0 = mesh().half_edge_at(he_index);
-  Mesh_connectivity::Half_edge_iterator he1 = he0.twin();
-
-  // meshes on the boundary are not flippable
-  if(he0.face().is_equal(mesh().hole()) || he1.face().is_equal(mesh().hole()))
-  {
-    return false;
-  }
-
-  Mesh_connectivity::Half_edge_iterator he2 = he0.next();
-  Mesh_connectivity::Half_edge_iterator he3 = he2.next();
-  Mesh_connectivity::Half_edge_iterator he4 = he1.next();
-  Mesh_connectivity::Half_edge_iterator he5 = he4.next();
-
-  // VERTICES
-  Mesh_connectivity::Vertex_iterator v0 = he1.origin();
-  Mesh_connectivity::Vertex_iterator v1 = he0.origin();
-  Mesh_connectivity::Vertex_iterator v2 = he3.origin();
-  Mesh_connectivity::Vertex_iterator v3 = he5.origin();
-
-  // FACES
-  Mesh_connectivity::Face_iterator f0 = he0.face();
-  Mesh_connectivity::Face_iterator f1 = he1.face();
-
-  //
-  // Now modify the connectivity
-  //
-
-  // HALF-EDGES
-  he0.data().next = he3.index();
-  he0.data().prev = he4.index();
-  he0.data().origin = v3.index();
-  //
-  he1.data().next = he5.index();
-  he1.data().prev = he2.index();
-  he1.data().origin = v2.index();
-  //
-  he2.data().next = he1.index();
-  he2.data().prev = he5.index();
-  he2.data().face = f1.index();
-  //
-  he3.data().next = he4.index();
-  he3.data().prev = he0.index();
-  //
-  he4.data().next = he0.index();
-  he4.data().prev = he3.index();
-  he4.data().face = f0.index();
-  //
-  he5.data().next = he2.index();
-  he5.data().prev = he1.index();
-
-  // VERTICES
-  v0.data().half_edge = he2.index();
-  v1.data().half_edge = he4.index();
-  v2.data().half_edge = he1.index();
-  v3.data().half_edge = he0.index();
-
-  // FACES
-  f0.data().half_edge = he0.index();
-  f1.data().half_edge = he1.index();
-
-  // operation successful
-  return true;
-} // All done
-
-
-//
-// ARAP Deformation Methods (stubs for now)
-//
+// ARAP deformation methods
 
 void
 Mesh_modifier_arap::initialize()
 {
+  // Defragment the mesh first to ensure compact, sequential vertex indices
+  Mesh_connectivity::Defragmentation_maps maps;
+  mesh().defragment_in_place(maps);
+
   // Initialize the boolean array to track anchors
   _is_anchor.clear();
   _is_anchor.resize(mesh().n_total_vertices(), false);
+
+  // Initialize rest positions matrix (3 x n_vertices)
+  _vertices_rest.resize(3, mesh().n_active_vertices());
+  // Store rest positions for all vertices (all are active after defragmentation)
+  for(int i = 0; i < mesh().n_active_vertices(); ++i)
+  {
+    Mesh_connectivity::Vertex_iterator vi = mesh().vertex_at(i);
+    _vertices_rest.col(i) = vi.xyz();
+  }
+
+  // Build cotangent weight adjacency list
+  build_cotangent_weights();
+}
+
+///
+// Weights and neighbors builders
+///
+
+static inline double
+_safe_cot(const Eigen::Vector3d & a, const Eigen::Vector3d & b, double eps = 1e-12)
+{
+  const double denom = a.cross(b).norm();
+  if(denom <= eps)
+    return 0.0; // robust: treat degenerate as 0
+  return a.dot(b) / denom;
+}
+
+static inline double
+_opposite_cot_in_face(Mesh_connectivity & M, Mesh_connectivity::Half_edge_iterator he)
+{
+  if(he.face().index() == M.hole_index)
+    return 0.0;
+
+  // triangle i -> j -> k; opposite angle is at vertex k
+  auto he_next = he.next();
+  int k = he_next.dest().index();
+
+  Eigen::Vector3d vk = M.vertex_at(k).xyz();
+  Eigen::Vector3d vi = he.origin().xyz();
+  Eigen::Vector3d vj = he.dest().xyz();
+
+  // vectors from k to i and k to j
+  return _safe_cot(vi - vk, vj - vk);
+}
+
+std::vector<double>
+_compute_opposite_cot_per_halfedge(Mesh_connectivity& M)
+{
+  std::vector<double> opp_cot(M.n_total_half_edges(), 0.0);
+  for (int h = 0; h < M.n_total_half_edges(); ++h) {
+    auto he = M.half_edge_at(h);
+    if (!he.is_active()) throw std::runtime_error("inactive half-edge (defragment first)");
+    opp_cot[h] = _opposite_cot_in_face(M, he);   // 0 on boundary
+  }
+  return opp_cot;                                
+}
+
+void
+Mesh_modifier_arap::build_cotangent_weights()
+{
+
+  // Helped by https://rodolphe-vaillant.fr/entry/69/c-code-for-cotangent-weights-over-a-triangular-mesh
+  // After defragmentation in initialize(), n_total == n_active and all vertices are active
+  int n_verts = mesh().n_active_vertices();
+  // Reset adjacency list
+  _adj.clear();
+  _adj.resize(n_verts);
+
+  // Compute cotangent weights for each half-edge
+  auto opp_cot = _compute_opposite_cot_per_halfedge(mesh());
+
+  // Loop over all vertices and store neighbor list with cotangent weights
+  for(int i = 0; i < n_verts; ++i)
+  {
+    Mesh_connectivity::Vertex_iterator v = mesh().vertex_at(i);
+    if(!v.is_active())
+    {
+      throw std::runtime_error("Mesh not properly defragmented on initialize()");
+    }
+    auto v_ring = mesh().vertex_ring_at(i);
+    do
+    {
+      Mesh_connectivity::Half_edge_iterator he_in = v_ring.half_edge();
+      // Get the neighbor vertex (origin of the half-edge pointing to i)
+      int j = he_in.origin().index();
+      // w_ij = (cot(alpha) + cot(beta)) / 2
+      double w_ij = (opp_cot[he_in.index()] + opp_cot[he_in.twin().index()]) / 2.0;
+      // Store the neighbor and weight in adjacency list of vertex i
+      _adj[i].push_back(Neighbor{j, w_ij});
+
+    } while(v_ring.advance()); // Continue around the vertex until return to start
+  }
 }
 
 
@@ -241,8 +261,7 @@ Mesh_modifier_arap::_solve_arap(const int temp_anchor_index,
   }
 
   printf("Deformed mesh with anchor vertex %d \n", temp_anchor_index);
-  printf(
-      " - New anchor position: (%f, %f, %f) \n", pulled_position.x(), pulled_position.y(), pulled_position.z());
+  printf(" - New anchor position: (%f, %f, %f) \n", pulled_position.x(), pulled_position.y(), pulled_position.z());
 
   // TODO: Implement ARAP deformation algorithm
   // For now, this is a stub that doesn't modify positions (naive stub)
@@ -274,8 +293,7 @@ Mesh_modifier_arap::deform_with_temp_anchor(const int vertex_index,
 Allocates a new matrix, initializes with current mesh positions, computes deformation, and returns it.
 */
 Eigen::Matrix3Xd
-Mesh_modifier_arap::compute_deformation(const int vertex_index,
-    const Eigen::Vector3d & new_position)
+Mesh_modifier_arap::compute_deformation(const int vertex_index, const Eigen::Vector3d & new_position)
 {
   // Allocate new matrix
   Eigen::Matrix3Xd result(3, mesh().n_total_vertices());
@@ -306,8 +324,7 @@ Mesh_modifier_arap::compute_deformation(const int vertex_index,
 Computes deformation in a temporary matrix and applies directly to mesh vertex positions.
 */
 bool
-Mesh_modifier_arap::apply_deformation_to_mesh(const int vertex_index,
-    const Eigen::Vector3d & new_position)
+Mesh_modifier_arap::apply_deformation_to_mesh(const int vertex_index, const Eigen::Vector3d & new_position)
 {
 
   Eigen::Matrix3Xd deformed_positions = compute_deformation(vertex_index, new_position);

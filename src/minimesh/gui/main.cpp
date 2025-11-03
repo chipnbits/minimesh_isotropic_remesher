@@ -557,9 +557,6 @@ main(int argc, char * argv[])
   // Setup background modifier for edge collapse
   globalvars::modi_edge.initialize();
 
-  // Setup ARAP modifier
-  globalvars::modi_arap.initialize();
-
   //
   // Add radio buttons to see which mesh components to view
   // Please view GLUI's user manual to learn more.
