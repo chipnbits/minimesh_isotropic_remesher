@@ -14,6 +14,7 @@
 #include <vector>
 
 #include <Eigen/Core>
+#include <Eigen/Sparse>
 
 #include <minimesh/core/mohe/mesh_connectivity.hpp>
 
@@ -26,10 +27,10 @@ namespace mohecore
 class Mesh_modifier_arap
 {
 public:
-
-  struct Neighbor {
-    int index;      // Neighbor vertex index
-    double weight;  // Cotangent weight w_ij
+  struct Neighbor
+  {
+    int index; // Neighbor vertex index
+    double weight; // Cotangent weight w_ij
   };
 
   // Trivial constructor
@@ -67,8 +68,14 @@ public:
   void initialize();
 
   // Build adjacency list with cotangent weights for all vertices
-  // This computes w_ij = (cot(alpha) + cot(beta)) / 2 for each edge
-  void build_cotangent_weights();
+  void build_adjacency_list();
+
+  // Build the Laplacian matrix for the mesh
+  void build_laplacian_matrix();
+
+  void build_rhs_b_matrix();
+  
+
 
   // Add a vertex as an anchor point
   // Returns true if successful, false if vertex is already an anchor
@@ -103,16 +110,14 @@ public:
   // new_position: the new position for the anchor
   // Returns: Matrix (3 x n_vertices) with deformed positions
   // Throws: std::runtime_error if deformation fails
-  Eigen::Matrix3Xd compute_deformation(const int vertex_index,
-      const Eigen::Vector3d & new_position);
+  Eigen::Matrix3Xd compute_deformation(const int vertex_index, const Eigen::Vector3d & new_position);
 
   // Apply ARAP deformation directly to mesh vertex positions (for CLI & file output)
   // vertex_index: the anchor to move
   // new_position: the new position for the anchor
   // Returns true if deformation was successful
   // NOTE: This modifies the actual mesh vertex positions in-place
-  bool apply_deformation_to_mesh(const int vertex_index,
-      const Eigen::Vector3d & new_position);
+  bool apply_deformation_to_mesh(const int vertex_index, const Eigen::Vector3d & new_position);
 
 
 private:
@@ -126,18 +131,25 @@ private:
   // adj[i] holds (neighbor_index, cotangent_weight) for each neighbor of vertex i
   std::vector<std::vector<Neighbor>> _adj;
 
-  Eigen::MatrixXd _vertices_rest;    // Rest positions of vertices
+  Eigen::MatrixXd _vertices_rest; // Rest positions of vertices
+  Eigen::MatrixXd _vertices_deformed; // Deformed positions of vertices
+  Eigen::SparseMatrix<double> _L; // Laplacian matrix
+  std::vector<Eigen::Matrix3d> _R; // Rotation matrices for each vertex
+  Eigen::Matrix3Xd _B; // Right-hand side matrix for L x = B
+  Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> _solver;
+
 
   // Core ARAP solver - all public deformation methods delegate to this
   // vertex_index: the temporary anchor to move
   // new_position: the new position for the temporary anchor
   // output: output matrix (3 x n_vertices) with deformed positions
   // Returns true if deformation was successful
-  bool _solve_arap(const int vertex_index,
-      const Eigen::Vector3d & new_position,
-      Eigen::Matrix3Xd & output);
-};
+  bool _solve_arap(const int vertex_index, const Eigen::Vector3d & new_position, Eigen::Matrix3Xd & output);
 
+    // Perform an iteration to update the internal deformation state using Lp = B and rotation estimation
+  bool _solve_deformation_with_anchors(
+      const Eigen::Matrix3Xd & output);
+};
 
 } // end of mohecore
 } // end of minimesh

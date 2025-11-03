@@ -53,22 +53,35 @@ Mesh_modifier_arap::initialize()
   // Defragment the mesh first to ensure compact, sequential vertex indices
   Mesh_connectivity::Defragmentation_maps maps;
   mesh().defragment_in_place(maps);
+  int n_vertices = mesh().n_total_vertices();
 
   // Initialize the boolean array to track anchors
   _is_anchor.clear();
-  _is_anchor.resize(mesh().n_total_vertices(), false);
+  _is_anchor.resize(n_vertices, false);
 
   // Initialize rest positions matrix (3 x n_vertices)
-  _vertices_rest.resize(3, mesh().n_active_vertices());
+  _vertices_rest.resize(3, n_vertices);
   // Store rest positions for all vertices (all are active after defragmentation)
-  for(int i = 0; i < mesh().n_active_vertices(); ++i)
+  for(int i = 0; i < n_vertices; ++i)
   {
     Mesh_connectivity::Vertex_iterator vi = mesh().vertex_at(i);
     _vertices_rest.col(i) = vi.xyz();
   }
 
+  // Initialize deformed positions matrix (3 x n_vertices) to rest positions
+  _R.resize(n_vertices);
+  for (auto & R_i : _R)
+  {
+    R_i = Eigen::Matrix3d::Identity();
+  }
+
+  _B = Eigen::Matrix3Xd::Zero(3, n_vertices);
+
   // Build cotangent weight adjacency list
-  build_cotangent_weights();
+  build_adjacency_list();
+  build_laplacian_matrix();
+  // Memorize the sparsity structure of L for the solver
+  _solver.analyzePattern(_L); 
 }
 
 ///
@@ -103,19 +116,21 @@ _opposite_cot_in_face(Mesh_connectivity & M, Mesh_connectivity::Half_edge_iterat
 }
 
 std::vector<double>
-_compute_opposite_cot_per_halfedge(Mesh_connectivity& M)
+_compute_opposite_cot_per_halfedge(Mesh_connectivity & M)
 {
   std::vector<double> opp_cot(M.n_total_half_edges(), 0.0);
-  for (int h = 0; h < M.n_total_half_edges(); ++h) {
+  for(int h = 0; h < M.n_total_half_edges(); ++h)
+  {
     auto he = M.half_edge_at(h);
-    if (!he.is_active()) throw std::runtime_error("inactive half-edge (defragment first)");
-    opp_cot[h] = _opposite_cot_in_face(M, he);   // 0 on boundary
+    if(!he.is_active())
+      throw std::runtime_error("inactive half-edge (defragment first)");
+    opp_cot[h] = _opposite_cot_in_face(M, he); // 0 on boundary
   }
-  return opp_cot;                                
+  return opp_cot;
 }
 
 void
-Mesh_modifier_arap::build_cotangent_weights()
+Mesh_modifier_arap::build_adjacency_list()
 {
 
   // Helped by https://rodolphe-vaillant.fr/entry/69/c-code-for-cotangent-weights-over-a-triangular-mesh
@@ -151,6 +166,58 @@ Mesh_modifier_arap::build_cotangent_weights()
   }
 }
 
+// Assumes that the w_ij adjacency list is already built
+void 
+Mesh_modifier_arap::build_laplacian_matrix()
+{
+  const int n = mesh().n_total_vertices();
+  _L.resize(n, n);
+
+  // Triplet is a (row, column, value) entry for sparse matrix construction
+  std::vector<Eigen::Triplet<double>> tripletList;
+  tripletList.reserve(n * 7);  // Prealloc memory (average ~6 neighbors + diagonal)
+
+  // Build the entries of L using (i,j, -w_ij) for off-diagonal and (i,i, sum_j w_ij) for diagonal
+  for(int i = 0; i < n; ++i)
+  {
+    double sum_wij = 0.0;
+    for(const Neighbor & neighbor : _adj[i])
+    {
+      int j = neighbor.index;
+      double w_ij = neighbor.weight;
+      sum_wij += w_ij;
+      tripletList.emplace_back(i, j, -w_ij); // Off-diagonal entries
+    }
+    tripletList.emplace_back(i, i, sum_wij); // Diagonal entry
+  }
+
+  // Construct the sparse matrix from triplets
+  _L.setFromTriplets(tripletList.begin(), tripletList.end());
+}
+
+void
+Mesh_modifier_arap::build_rhs_b_matrix()
+{
+  const int n = mesh().n_total_vertices();
+  _B = Eigen::Matrix3Xd::Zero(3, n);
+
+  for (int i = 0; i < n; ++i)
+  {
+    Eigen::Vector3d b_i = Eigen::Vector3d::Zero();
+    for (const Neighbor & nb : _adj[i])
+    {
+      int j = nb.index;
+      double w_ij = nb.weight;
+      Eigen::Vector3d p_ij = _vertices_rest.col(i) - _vertices_rest.col(j);
+      b_i += w_ij * 0.5 * (_R[i] + _R[j]) * p_ij;
+    }
+    _B.col(i) = b_i;
+  }
+}
+
+///
+// Anchor management methods
+///
 
 bool
 Mesh_modifier_arap::add_anchor(const int vertex_index)
@@ -270,6 +337,23 @@ Mesh_modifier_arap::_solve_arap(const int temp_anchor_index,
   // 2. Update constraint for moved anchor
   // 3. Solve for all vertex positions to minimize ARAP energy
   // 4. Store results in output matrix
+
+  return true;
+}
+
+bool
+Mesh_modifier_arap::_solve_deformation_with_anchors(
+    const Eigen::Matrix3Xd & output)
+{
+  // Verify L is precomputed
+  if(_L.rows() == 0 || _L.cols() == 0)
+  {
+    return false;
+  }
+
+  // TODO: Implement the actual deformation update using L and the current output
+  // This will involve solving the linear system Lp = B for the updated positions
+  // and applying the results to the output matrix.
 
   return true;
 }
