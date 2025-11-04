@@ -69,8 +69,12 @@ Mesh_modifier_arap::initialize()
   }
 
   // Initialize deformed positions matrix (3 x n_vertices) to rest positions
+  _vertices_deformed.resize(3, n_vertices);
+  _vertices_deformed = _vertices_rest;
+
+  // Initialize rotation matrices
   _R.resize(n_vertices);
-  for (auto & R_i : _R)
+  for(auto & R_i : _R)
   {
     R_i = Eigen::Matrix3d::Identity();
   }
@@ -81,7 +85,7 @@ Mesh_modifier_arap::initialize()
   build_adjacency_list();
   build_laplacian_matrix();
   // Memorize the sparsity structure of L for the solver
-  _solver.analyzePattern(_L); 
+  _solver.analyzePattern(_L);
 }
 
 ///
@@ -167,7 +171,7 @@ Mesh_modifier_arap::build_adjacency_list()
 }
 
 // Assumes that the w_ij adjacency list is already built
-void 
+void
 Mesh_modifier_arap::build_laplacian_matrix()
 {
   const int n = mesh().n_total_vertices();
@@ -175,7 +179,7 @@ Mesh_modifier_arap::build_laplacian_matrix()
 
   // Triplet is a (row, column, value) entry for sparse matrix construction
   std::vector<Eigen::Triplet<double>> tripletList;
-  tripletList.reserve(n * 7);  // Prealloc memory (average ~6 neighbors + diagonal)
+  tripletList.reserve(n * 7); // Prealloc memory (average ~6 neighbors + diagonal)
 
   // Build the entries of L using (i,j, -w_ij) for off-diagonal and (i,i, sum_j w_ij) for diagonal
   for(int i = 0; i < n; ++i)
@@ -195,16 +199,78 @@ Mesh_modifier_arap::build_laplacian_matrix()
   _L.setFromTriplets(tripletList.begin(), tripletList.end());
 }
 
+// Helper to build the complement of which vertices are constrained
+static inline std::vector<int>
+diff_indices(int n, const std::vector<int> & cons)
+{
+  std::vector<char> is_cons(n, 0);
+  for(int k : cons)
+    is_cons[k] = 1;
+  std::vector<int> free;
+  free.reserve(n - (int)cons.size());
+  for(int i = 0; i < n; ++i)
+    if(!is_cons[i])
+      free.push_back(i);
+  return free;
+}
+
+void
+Mesh_modifier_arap::build_blocks_from_constraints(const std::vector<int> & cons)
+{
+  const int n = _L.rows();
+  _cons_idx = cons;
+  _free_idx = diff_indices(n, cons);
+
+  // maps: global -> local
+  std::vector<int> fmap(n, -1), cmap(n, -1);
+  for(int a = 0; a < (int)_free_idx.size(); ++a)
+    fmap[_free_idx[a]] = a;
+  for(int a = 0; a < (int)_cons_idx.size(); ++a)
+    cmap[_cons_idx[a]] = a;
+
+  // Build Lff and Lfc by filtering triplets from full L
+  std::vector<Eigen::Triplet<double>> Tf, Tfc;
+  Tf.reserve(_L.nonZeros());
+  Tfc.reserve(_L.nonZeros() / 4);
+
+  for(int k = 0; k < _L.outerSize(); ++k)
+  {
+    for(Eigen::SparseMatrix<double>::InnerIterator it(_L, k); it; ++it)
+    {
+      int i = it.row(); // row
+      int j = it.col(); // col
+      double v = it.value();
+
+      if(fmap[i] != -1)
+      { // only rows of free vertices survive
+        if(fmap[j] != -1)
+        {
+          Tf.emplace_back(fmap[i], fmap[j], v); // Lff
+        }
+        else if(cmap[j] != -1)
+        {
+          Tfc.emplace_back(fmap[i], cmap[j], v); // Lfc
+        }
+      }
+    }
+  }
+
+  _Lff.resize(_free_idx.size(), _free_idx.size());
+  _Lfc.resize(_free_idx.size(), _cons_idx.size());
+  _Lff.setFromTriplets(Tf.begin(), Tf.end());
+  _Lfc.setFromTriplets(Tfc.begin(), Tfc.end());
+}
+
 void
 Mesh_modifier_arap::build_rhs_b_matrix()
 {
   const int n = mesh().n_total_vertices();
   _B = Eigen::Matrix3Xd::Zero(3, n);
 
-  for (int i = 0; i < n; ++i)
+  for(int i = 0; i < n; ++i)
   {
     Eigen::Vector3d b_i = Eigen::Vector3d::Zero();
-    for (const Neighbor & nb : _adj[i])
+    for(const Neighbor & nb : _adj[i])
     {
       int j = nb.index;
       double w_ij = nb.weight;
@@ -213,6 +279,42 @@ Mesh_modifier_arap::build_rhs_b_matrix()
     }
     _B.col(i) = b_i;
   }
+}
+
+// Fill C (|cons| x 3) with the current target positions of the anchors including temporary moved one
+Eigen::MatrixXd
+Mesh_modifier_arap::_gather_constraint_matrix(int temp_anchor, const Eigen::Vector3d & pulled)
+{
+  // Allocate a matrix C of size (m x 3) for m constrained vertices
+  const int m = (int)_cons_idx.size();
+  Eigen::MatrixXd C(m, 3);
+  for(int a = 0; a < m; ++a)
+  {
+    int idx = _cons_idx[a];
+    if(idx == temp_anchor)
+    {
+      C.row(a) = pulled.transpose();
+    }
+    else
+    {
+      // static anchors: keep at their current (or rest) position
+      C.row(a) = _vertices_rest.col(idx).transpose(); // or current position
+    }
+  }
+  return C;
+}
+
+void
+Mesh_modifier_arap::build_rhs_b_reduced(const Eigen::MatrixXd & C)
+{
+  const int nf = (int)_free_idx.size();
+  _Bf.resize(nf, 3);
+  for(int a = 0; a < nf; ++a)
+  {
+    int i = _free_idx[a];
+    _Bf.row(a) = _B.col(i).transpose(); // (1x3)
+  }
+  _Bf -= _Lfc * C; // Eigen does the three RHS at once
 }
 
 ///
@@ -316,40 +418,102 @@ Assumes output matrix is already properly sized and initialized with positions.
 All public deformation methods delegate to this.
 */
 bool
-Mesh_modifier_arap::_solve_arap(const int temp_anchor_index,
-    const Eigen::Vector3d & pulled_position,
-    Eigen::Matrix3Xd & output)
+Mesh_modifier_arap::_solve_arap(const int temp_anchor, const Eigen::Vector3d & pulled, Eigen::Matrix3Xd & output)
 {
   // Check if vertex is active
-  Mesh_connectivity::Vertex_iterator v_pulled = mesh().vertex_at(temp_anchor_index);
+  Mesh_connectivity::Vertex_iterator v_pulled = mesh().vertex_at(temp_anchor);
   if(!v_pulled.is_active())
   {
     return false;
   }
 
-  printf("Deformed mesh with anchor vertex %d \n", temp_anchor_index);
-  printf(" - New anchor position: (%f, %f, %f) \n", pulled_position.x(), pulled_position.y(), pulled_position.z());
+  printf("Deformed mesh with anchor vertex %d \n", temp_anchor);
+  printf(" - New anchor position: (%f, %f, %f) \n", pulled.x(), pulled.y(), pulled.z());
 
-  // TODO: Implement ARAP deformation algorithm
-  // For now, this is a stub that doesn't modify positions (naive stub)
-  // The actual ARAP solver will:
-  // 1. Use the prefactorized system matrix (from initialize())
-  // 2. Update constraint for moved anchor
-  // 3. Solve for all vertex positions to minimize ARAP energy
-  // 4. Store results in output matrix
+  _solve_deformation_with_anchors(temp_anchor, pulled);
+  // Copy deformed positions to output
+  output = _vertices_deformed;
 
   return true;
 }
 
+
+
+// Solve the Lp = B constrained system with current Ri and given anchors
 bool
-Mesh_modifier_arap::_solve_deformation_with_anchors(
-    const Eigen::Matrix3Xd & output)
+Mesh_modifier_arap::_solve_deformation_with_anchors(const int temp_anchor,
+    const Eigen::Vector3d & new_position)
 {
+  const bool dynamic_anchor_is_also_static = _is_anchor[temp_anchor]; // Store state of temp anchor
+
   // Verify L is precomputed
   if(_L.rows() == 0 || _L.cols() == 0)
   {
     return false;
   }
+
+  // Verify vertices_rest is initialized
+  if(_vertices_rest.cols() == 0)
+  {
+    return false;
+  }
+
+  // Gather the free and constrained indices
+  _cons_idx.clear();
+  _free_idx.clear();
+  _is_anchor[temp_anchor] = true; // Temporarily mark the moved anchor as static so it gets into cons_idx
+  for(int i = 0; i < mesh().n_total_vertices(); ++i)
+  {
+    if(_is_anchor[i])
+    {
+      _cons_idx.push_back(i);
+    }
+    else
+    {
+      _free_idx.push_back(i);
+    }
+  }
+  _is_anchor[temp_anchor] = dynamic_anchor_is_also_static; // Restore state
+
+  // Check if _cons_idx has changed from last time
+  const bool has_new_constraints = (_cons_idx != _last_cons_idx);
+  _last_cons_idx = _cons_idx;
+
+  if(has_new_constraints)
+  {
+    // Rebuild Lff and Lfc blocks
+    build_blocks_from_constraints(_cons_idx);
+    // Factorize Lff for solving
+    _solver.compute(_Lff);
+    if(_solver.info() != Eigen::Success)
+    {
+      return false; // Factorization failed
+    }
+  }
+  // Build constraint matrix C, assumes temp_anchor is in _cons_idx
+  Eigen::MatrixXd C = _gather_constraint_matrix(temp_anchor, new_position);
+  // Build reduced RHS Bf
+  build_rhs_b_matrix(); // Build full unconstrained B
+  build_rhs_b_reduced(C); // Reduce to free vertices and apply constraints (uses Lfc and C)
+  // Solve for free vertex positions: Lff * Pf = Bf
+  Eigen::MatrixXd Pf = _solver.solve(_Bf);
+  if(_solver.info() != Eigen::Success)
+  {
+    return false; // Solve failed
+  }
+
+  // Assemble full output positions
+  for(int a = 0; a < (int)_free_idx.size(); ++a)
+  {
+    int i = _free_idx[a];
+    _vertices_deformed.col(i) = Pf.row(a).transpose();
+  }
+  for(int a = 0; a < (int)_cons_idx.size(); ++a)
+  {
+    int i = _cons_idx[a];
+    _vertices_deformed.col(i) = C.row(a).transpose();
+  }
+
 
   // TODO: Implement the actual deformation update using L and the current output
   // This will involve solving the linear system Lp = B for the updated positions
@@ -402,7 +566,6 @@ Mesh_modifier_arap::compute_deformation(const int vertex_index, const Eigen::Vec
 
   return result;
 }
-
 
 /* ARAP Deformation - Mesh-modifying version (for CLI & file output)
 Computes deformation in a temporary matrix and applies directly to mesh vertex positions.

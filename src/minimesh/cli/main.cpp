@@ -227,6 +227,7 @@ int main(int argc, char **argv)
   printf("Total faces: %d \n", mesh.n_active_faces());
   printf("Total half-edges: %d \n", mesh.n_active_half_edges());
 
+  // Run full ARAP deformation test
   test_arap_deformation(mesh, io);
   return 0;
 } // end of main()

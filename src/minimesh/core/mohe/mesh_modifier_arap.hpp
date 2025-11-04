@@ -73,8 +73,13 @@ public:
   // Build the Laplacian matrix for the mesh
   void build_laplacian_matrix();
 
+  // Build the free/free and free/constraint blocks of the Laplacian matrix from the constraint indices
+  void build_blocks_from_constraints(const std::vector<int> & cons);
+
   void build_rhs_b_matrix();
-  
+
+  void build_rhs_b_reduced(const Eigen::MatrixXd & C);
+
 
 
   // Add a vertex as an anchor point
@@ -131,12 +136,20 @@ private:
   // adj[i] holds (neighbor_index, cotangent_weight) for each neighbor of vertex i
   std::vector<std::vector<Neighbor>> _adj;
 
-  Eigen::MatrixXd _vertices_rest; // Rest positions of vertices
-  Eigen::MatrixXd _vertices_deformed; // Deformed positions of vertices
-  Eigen::SparseMatrix<double> _L; // Laplacian matrix
+  Eigen::Matrix3Xd _vertices_rest; // Rest positions of vertices
+  Eigen::Matrix3Xd _vertices_deformed; // Deformed positions of vertices
+
+  Eigen::SparseMatrix<double> _L; // Laplacian matrix across all params
+  Eigen::SparseMatrix<double> _Lff; // Free-free Laplacian matrix
+  Eigen::SparseMatrix<double> _Lfc; // Free-anchor Laplacian matrix
+
   std::vector<Eigen::Matrix3d> _R; // Rotation matrices for each vertex
   Eigen::Matrix3Xd _B; // Right-hand side matrix for L x = B
+  Eigen::MatrixXd _Bf; // Reduced right-hand side matrix for free vertices
   Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> _solver;
+
+  // Freed index vertices, constrained index vertices, and previous constrained index vertices
+  std::vector<int> _free_idx, _cons_idx, _last_cons_idx;
 
 
   // Core ARAP solver - all public deformation methods delegate to this
@@ -144,11 +157,15 @@ private:
   // new_position: the new position for the temporary anchor
   // output: output matrix (3 x n_vertices) with deformed positions
   // Returns true if deformation was successful
-  bool _solve_arap(const int vertex_index, const Eigen::Vector3d & new_position, Eigen::Matrix3Xd & output);
+  bool _solve_arap(const int temp_anchor, const Eigen::Vector3d & pulled, Eigen::Matrix3Xd & output);
 
-    // Perform an iteration to update the internal deformation state using Lp = B and rotation estimation
-  bool _solve_deformation_with_anchors(
-      const Eigen::Matrix3Xd & output);
+  Eigen::MatrixXd _gather_constraint_matrix(int temp_anchor, const Eigen::Vector3d & pulled);
+
+  // Perform an iteration to update the internal deformation state using Lp = B and rotation estimation
+  bool _solve_deformation_with_anchors(const int vertex_index, const Eigen::Vector3d & new_position);
+
+  // Perform an iteration of R_i estimation
+  bool _solve_rotation_estimation();
 };
 
 } // end of mohecore
