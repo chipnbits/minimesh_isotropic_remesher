@@ -33,10 +33,121 @@ public:
     double weight; // Cotangent weight w_ij
   };
 
+  struct Anchors
+  {
+    // --- public API ---
+    void init(int n)
+    {
+      _n = n;
+      _is_static.assign(n, 0);
+      _static_list.clear();
+    }
+
+    // mark/unmark static anchors (bumps version only on real change)
+    bool addStatic(int v)
+    {
+      if(!_valid(v))
+        return false;
+      if(_is_static[v])
+        return false; // already static
+
+      // If here, we are adding a new static anchor
+      _is_static[v] = true;
+      _static_list.push_back(v);
+      _version++;
+      return true;
+    }
+
+    bool removeStatic(int v)
+    {
+      if(!_valid(v))
+        return false;
+      if(!_is_static[v])
+        return false; // not static
+
+      // If here, we are removing a static anchor
+      _is_static[v] = false;
+      _static_list.erase(std::remove(_static_list.begin(), _static_list.end(), v), _static_list.end());
+      _version++;
+      return true;
+    }
+
+    void clearStatic()
+    {
+      for(int v : _static_list)
+      {
+        _is_static[v] = false;
+      }
+      _static_list.clear();
+      _version++;
+    }
+
+    bool isStaticAnchor(int v) const
+    {
+      if(!_valid(v))
+        return false;
+      return _is_static[v];
+    }
+
+    const std::vector<int> & getStaticList() const { return _static_list; }
+
+    // set the current temporary (moving) anchor id, return bool if changed
+    bool setTemp(int v)
+    {
+      if(_temp_now == v)
+      {
+        return false;
+      }
+      else
+      {
+        _temp_now = v;
+        // Check if total set of anchors changed
+        if(!isStaticAnchor(v))
+        {
+          _version++;
+        }
+        return true;
+      }
+    }
+    bool hasTemp() const { return _temp_now != -1; }
+    int getTemp() const { return _temp_now; }
+    bool removeTemp()
+    {
+      if(_temp_now == -1)
+      {
+        return false;
+      }
+      else
+      {
+        _version++;
+        _temp_now = -1;
+        _temp_pos = Eigen::Vector3d::Zero();
+        return true;
+      }
+    }
+    Eigen::Vector3d getTempPosition() const { return _temp_pos; }
+    void setTempPosition(const Eigen::Vector3d & pos) { _temp_pos = pos; }
+
+
+    int version() const { return _version; }
+
+  private:
+    bool _valid(int v) const { return v >= 0 && v < _n; }
+    int _n = 0;
+    std::vector<bool> _is_static; // Check if vertex is static anchor
+    std::vector<int> _static_list; // List of static anchor indices
+    int _temp_now = -1; // Current temporary (moving) anchor index
+    Eigen::Vector3d _temp_pos; // Current temporary (moving) anchor position
+
+    uint64_t _version = 0; // b std::vector<int> _pos_in_free_base; // vertex -> index in _free_base (or -1)
+  };
+
+
   // Trivial constructor
   Mesh_modifier_arap(Mesh_connectivity & mesh_in)
   : _m(mesh_in)
   {
+    _anchors.init(mesh_in.n_total_vertices());
   }
 
   // Get the underlying mesh
@@ -74,12 +185,9 @@ public:
   void build_laplacian_matrix();
 
   // Build the free/free and free/constraint blocks of the Laplacian matrix from the constraint indices
-  void build_blocks_from_constraints(const std::vector<int> & cons);
+  void build_blocks_from_constraints();
 
-  void build_rhs_b_matrix();
-
-  void build_rhs_b_reduced(const Eigen::MatrixXd & C);
-
+  void build_rhs_bf_direct();
 
 
   // Add a vertex as an anchor point
@@ -97,7 +205,7 @@ public:
   void clear_anchors();
 
   // Get all anchor vertex indices (returns vector for convenience)
-  std::vector<int> get_anchors();
+  std::vector<int> get_static_anchors();
 
   // Perform ARAP deformation by moving an anchor (in-place version for GUI performance)
   // vertex_index: the anchor to move
@@ -129,8 +237,8 @@ private:
   // pointer to the mesh that we are working on.
   Mesh_connectivity & _m;
 
-  // Boolean array tracking which vertices are anchors (O(1) lookup)
-  std::vector<bool> _is_anchor;
+  Anchors _anchors; // Anchor management
+  int _last_anchor_version = -1; // Last known version of anchors
 
   // Adjacency list with cotangent weights
   // adj[i] holds (neighbor_index, cotangent_weight) for each neighbor of vertex i
@@ -144,8 +252,8 @@ private:
   Eigen::SparseMatrix<double> _Lfc; // Free-anchor Laplacian matrix
 
   std::vector<Eigen::Matrix3d> _R; // Rotation matrices for each vertex
-  Eigen::Matrix3Xd _B; // Right-hand side matrix for L x = B
   Eigen::MatrixXd _Bf; // Reduced right-hand side matrix for free vertices
+  Eigen::MatrixXd _C; // Constraint matrix
   Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> _solver;
 
   // Freed index vertices, constrained index vertices, and previous constrained index vertices
@@ -159,10 +267,10 @@ private:
   // Returns true if deformation was successful
   bool _solve_arap(const int temp_anchor, const Eigen::Vector3d & pulled, Eigen::Matrix3Xd & output);
 
-  Eigen::MatrixXd _gather_constraint_matrix(int temp_anchor, const Eigen::Vector3d & pulled);
+  Eigen::MatrixXd _gather_constraint_matrix();
 
   // Perform an iteration to update the internal deformation state using Lp = B and rotation estimation
-  bool _solve_deformation_with_anchors(const int vertex_index, const Eigen::Vector3d & new_position);
+  bool _solve_deformation_with_anchors();
 
   // Perform an iteration of R_i estimation
   bool _solve_rotation_estimation();

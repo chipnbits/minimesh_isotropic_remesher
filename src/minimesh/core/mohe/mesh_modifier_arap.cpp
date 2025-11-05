@@ -55,9 +55,9 @@ Mesh_modifier_arap::initialize()
   mesh().defragment_in_place(maps);
   int n_vertices = mesh().n_total_vertices();
 
-  // Initialize the boolean array to track anchors
-  _is_anchor.clear();
-  _is_anchor.resize(n_vertices, false);
+  // Initialize anchors
+  _anchors.init(n_vertices);
+  _anchors.clearStatic();
 
   // Initialize rest positions matrix (3 x n_vertices)
   _vertices_rest.resize(3, n_vertices);
@@ -79,7 +79,7 @@ Mesh_modifier_arap::initialize()
     R_i = Eigen::Matrix3d::Identity();
   }
 
-  _B = Eigen::Matrix3Xd::Zero(3, n_vertices);
+  _Bf = Eigen::Matrix3Xd::Zero(3, n_vertices);
 
   // Build cotangent weight adjacency list
   build_adjacency_list();
@@ -199,27 +199,10 @@ Mesh_modifier_arap::build_laplacian_matrix()
   _L.setFromTriplets(tripletList.begin(), tripletList.end());
 }
 
-// Helper to build the complement of which vertices are constrained
-static inline std::vector<int>
-diff_indices(int n, const std::vector<int> & cons)
-{
-  std::vector<char> is_cons(n, 0);
-  for(int k : cons)
-    is_cons[k] = 1;
-  std::vector<int> free;
-  free.reserve(n - (int)cons.size());
-  for(int i = 0; i < n; ++i)
-    if(!is_cons[i])
-      free.push_back(i);
-  return free;
-}
-
 void
-Mesh_modifier_arap::build_blocks_from_constraints(const std::vector<int> & cons)
+Mesh_modifier_arap::build_blocks_from_constraints()
 {
   const int n = _L.rows();
-  _cons_idx = cons;
-  _free_idx = diff_indices(n, cons);
 
   // maps: global -> local
   std::vector<int> fmap(n, -1), cmap(n, -1);
@@ -261,29 +244,9 @@ Mesh_modifier_arap::build_blocks_from_constraints(const std::vector<int> & cons)
   _Lfc.setFromTriplets(Tfc.begin(), Tfc.end());
 }
 
-void
-Mesh_modifier_arap::build_rhs_b_matrix()
-{
-  const int n = mesh().n_total_vertices();
-  _B = Eigen::Matrix3Xd::Zero(3, n);
-
-  for(int i = 0; i < n; ++i)
-  {
-    Eigen::Vector3d b_i = Eigen::Vector3d::Zero();
-    for(const Neighbor & nb : _adj[i])
-    {
-      int j = nb.index;
-      double w_ij = nb.weight;
-      Eigen::Vector3d p_ij = _vertices_rest.col(i) - _vertices_rest.col(j);
-      b_i += w_ij * 0.5 * (_R[i] + _R[j]) * p_ij;
-    }
-    _B.col(i) = b_i;
-  }
-}
-
 // Fill C (|cons| x 3) with the current target positions of the anchors including temporary moved one
 Eigen::MatrixXd
-Mesh_modifier_arap::_gather_constraint_matrix(int temp_anchor, const Eigen::Vector3d & pulled)
+Mesh_modifier_arap::_gather_constraint_matrix()
 {
   // Allocate a matrix C of size (m x 3) for m constrained vertices
   const int m = (int)_cons_idx.size();
@@ -291,9 +254,9 @@ Mesh_modifier_arap::_gather_constraint_matrix(int temp_anchor, const Eigen::Vect
   for(int a = 0; a < m; ++a)
   {
     int idx = _cons_idx[a];
-    if(idx == temp_anchor)
+    if(idx == _anchors.getTemp())
     {
-      C.row(a) = pulled.transpose();
+      C.row(a) = _anchors.getTempPosition().transpose();
     }
     else
     {
@@ -301,20 +264,39 @@ Mesh_modifier_arap::_gather_constraint_matrix(int temp_anchor, const Eigen::Vect
       C.row(a) = _vertices_rest.col(idx).transpose(); // or current position
     }
   }
+
   return C;
 }
 
 void
-Mesh_modifier_arap::build_rhs_b_reduced(const Eigen::MatrixXd & C)
+Mesh_modifier_arap::build_rhs_bf_direct()
 {
+  // Gather constraint matrix
+  _C = _gather_constraint_matrix();
+
   const int nf = (int)_free_idx.size();
   _Bf.resize(nf, 3);
+
+  // Compute RHS for each free vertex only (avoid computing for constrained vertices)
   for(int a = 0; a < nf; ++a)
   {
     int i = _free_idx[a];
-    _Bf.row(a) = _B.col(i).transpose(); // (1x3)
+    Eigen::Vector3d b_i = Eigen::Vector3d::Zero();
+
+    // Sum over all neighbors of this free vertex
+    for(const Neighbor & nb : _adj[i])
+    {
+      int j = nb.index;
+      double w_ij = nb.weight;
+      Eigen::Vector3d p_ij = _vertices_rest.col(i) - _vertices_rest.col(j);
+      b_i += w_ij * 0.5 * (_R[i] + _R[j]) * p_ij;
+    }
+
+    _Bf.row(a) = b_i.transpose();
   }
-  _Bf -= _Lfc * C; // Eigen does the three RHS at once
+
+  // Subtract constraint contribution
+  _Bf -= _Lfc * _C;
 }
 
 ///
@@ -324,92 +306,35 @@ Mesh_modifier_arap::build_rhs_b_reduced(const Eigen::MatrixXd & C)
 bool
 Mesh_modifier_arap::add_anchor(const int vertex_index)
 {
-  // Check if vertex exists and is active
-  if(vertex_index < 0 || vertex_index >= static_cast<int>(_is_anchor.size()))
-  {
-    return false;
-  }
-
-  Mesh_connectivity::Vertex_iterator v = mesh().vertex_at(vertex_index);
-  if(!v.is_active())
-  {
-    return false;
-  }
-
-  // Check if already an anchor
-  if(_is_anchor[vertex_index])
-  {
-    return false; // Already an anchor
-  }
-
-  // Mark as anchor
-  _is_anchor[vertex_index] = true;
-  return true;
+  return _anchors.addStatic(vertex_index);
 }
 
 
 bool
 Mesh_modifier_arap::remove_anchor(const int vertex_index)
 {
-  // Check bounds
-  if(vertex_index < 0 || vertex_index >= static_cast<int>(_is_anchor.size()))
-  {
-    return false;
-  }
-
-  // Check if it was an anchor
-  if(!_is_anchor[vertex_index])
-  {
-    return false; // Not an anchor
-  }
-
-  // Remove anchor
-  _is_anchor[vertex_index] = false;
-  return true;
+  return _anchors.removeStatic(vertex_index);
 }
 
 
 bool
 Mesh_modifier_arap::is_anchor(const int vertex_index) const
 {
-  // Check bounds
-  if(vertex_index < 0 || vertex_index >= static_cast<int>(_is_anchor.size()))
-  {
-    return false;
-  }
-
-  return _is_anchor[vertex_index];
+  return _anchors.isStaticAnchor(vertex_index);
 }
 
 
 void
 Mesh_modifier_arap::clear_anchors()
 {
-  // Reset all anchors to false
-  std::fill(_is_anchor.begin(), _is_anchor.end(), false);
+  _anchors.clearStatic();
 }
 
 
 std::vector<int>
-Mesh_modifier_arap::get_anchors()
+Mesh_modifier_arap::get_static_anchors()
 {
-  std::vector<int> anchors;
-
-  // Collect all indices where _is_anchor is true
-  for(int i = 0; i < static_cast<int>(_is_anchor.size()); ++i)
-  {
-    if(_is_anchor[i])
-    {
-      // Also verify the vertex is still active
-      Mesh_connectivity::Vertex_iterator v = mesh().vertex_at(i);
-      if(v.is_active())
-      {
-        anchors.push_back(i);
-      }
-    }
-  }
-
-  return anchors;
+  return _anchors.getStaticList();
 }
 
 /* Core ARAP Deformation Solver (Private)
@@ -427,10 +352,40 @@ Mesh_modifier_arap::_solve_arap(const int temp_anchor, const Eigen::Vector3d & p
     return false;
   }
 
+  // Assign the temp anchor and check for rebuilding the constraint structures
+  _anchors.setTemp(temp_anchor);
+  _anchors.setTempPosition(pulled);
+  int new_anchor_version = _anchors.version();
+  if(_last_anchor_version != new_anchor_version)
+  {
+    // Rebuild constraint related structures
+    _last_anchor_version = new_anchor_version;
+    _cons_idx.clear();
+    _free_idx.clear();
+    for(int i = 0; i < mesh().n_total_vertices(); ++i)
+    {
+      if(_anchors.isStaticAnchor(i) or (i == temp_anchor))
+      {
+        _cons_idx.push_back(i);
+      }
+      else
+      {
+        _free_idx.push_back(i);
+      }
+    }
+    build_blocks_from_constraints();
+    // Factorize Lff for solving
+    _solver.compute(_Lff);
+    if(_solver.info() != Eigen::Success)
+    {
+      return false; // Factorization failed
+    }
+  }
+
   printf("Deformed mesh with anchor vertex %d \n", temp_anchor);
   printf(" - New anchor position: (%f, %f, %f) \n", pulled.x(), pulled.y(), pulled.z());
 
-  _solve_deformation_with_anchors(temp_anchor, pulled);
+  _solve_deformation_with_anchors();
   // Copy deformed positions to output
   output = _vertices_deformed;
 
@@ -441,11 +396,8 @@ Mesh_modifier_arap::_solve_arap(const int temp_anchor, const Eigen::Vector3d & p
 
 // Solve the Lp = B constrained system with current Ri and given anchors
 bool
-Mesh_modifier_arap::_solve_deformation_with_anchors(const int temp_anchor,
-    const Eigen::Vector3d & new_position)
+Mesh_modifier_arap::_solve_deformation_with_anchors()
 {
-  const bool dynamic_anchor_is_also_static = _is_anchor[temp_anchor]; // Store state of temp anchor
-
   // Verify L is precomputed
   if(_L.rows() == 0 || _L.cols() == 0)
   {
@@ -457,44 +409,8 @@ Mesh_modifier_arap::_solve_deformation_with_anchors(const int temp_anchor,
   {
     return false;
   }
-
-  // Gather the free and constrained indices
-  _cons_idx.clear();
-  _free_idx.clear();
-  _is_anchor[temp_anchor] = true; // Temporarily mark the moved anchor as static so it gets into cons_idx
-  for(int i = 0; i < mesh().n_total_vertices(); ++i)
-  {
-    if(_is_anchor[i])
-    {
-      _cons_idx.push_back(i);
-    }
-    else
-    {
-      _free_idx.push_back(i);
-    }
-  }
-  _is_anchor[temp_anchor] = dynamic_anchor_is_also_static; // Restore state
-
-  // Check if _cons_idx has changed from last time
-  const bool has_new_constraints = (_cons_idx != _last_cons_idx);
-  _last_cons_idx = _cons_idx;
-
-  if(has_new_constraints)
-  {
-    // Rebuild Lff and Lfc blocks
-    build_blocks_from_constraints(_cons_idx);
-    // Factorize Lff for solving
-    _solver.compute(_Lff);
-    if(_solver.info() != Eigen::Success)
-    {
-      return false; // Factorization failed
-    }
-  }
-  // Build constraint matrix C, assumes temp_anchor is in _cons_idx
-  Eigen::MatrixXd C = _gather_constraint_matrix(temp_anchor, new_position);
-  // Build reduced RHS Bf
-  build_rhs_b_matrix(); // Build full unconstrained B
-  build_rhs_b_reduced(C); // Reduce to free vertices and apply constraints (uses Lfc and C)
+  // Build reduced RHS Bf and store in _Bf
+  build_rhs_bf_direct();
   // Solve for free vertex positions: Lff * Pf = Bf
   Eigen::MatrixXd Pf = _solver.solve(_Bf);
   if(_solver.info() != Eigen::Success)
@@ -511,14 +427,8 @@ Mesh_modifier_arap::_solve_deformation_with_anchors(const int temp_anchor,
   for(int a = 0; a < (int)_cons_idx.size(); ++a)
   {
     int i = _cons_idx[a];
-    _vertices_deformed.col(i) = C.row(a).transpose();
+    _vertices_deformed.col(i) = _C.row(a).transpose();
   }
-
-
-  // TODO: Implement the actual deformation update using L and the current output
-  // This will involve solving the linear system Lp = B for the updated positions
-  // and applying the results to the output matrix.
-
   return true;
 }
 

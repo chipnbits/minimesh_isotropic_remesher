@@ -2,26 +2,26 @@
 // This is a bare executable that gets linked to the core library.
 // You can use it to test your code, or start learning about the library.
 //
-// Here I have put an executable which reads a predefined mesh, flips a specific edge in that 
+// Here I have put an executable which reads a predefined mesh, flips a specific edge in that
 // mesh, and then writes it back to .vtk and .obj formats. Feel free to play with the example, change
 // it, or move it to a completely different file.
 //
 
-#include <cstdio>
-#include <string>
 #include <chrono>
 #include <cmath>
-#include <unordered_map> 
+#include <cstdio>
+#include <string>
+#include <unordered_map>
 
 #include <minimesh/core/util/assert.hpp>
 #include <minimesh/core/util/macros.hpp>
 
+#include <minimesh/core/mohe/mesh_analysis.hpp>
 #include <minimesh/core/mohe/mesh_connectivity.hpp>
 #include <minimesh/core/mohe/mesh_io.hpp>
-#include <minimesh/core/mohe/mesh_modifier_loop_subdivision.hpp>
-#include <minimesh/core/mohe/mesh_modifier_edge_collapse.hpp>
 #include <minimesh/core/mohe/mesh_modifier_arap.hpp>
-#include <minimesh/core/mohe/mesh_analysis.hpp>
+#include <minimesh/core/mohe/mesh_modifier_edge_collapse.hpp>
+#include <minimesh/core/mohe/mesh_modifier_loop_subdivision.hpp>
 
 using namespace minimesh;
 
@@ -29,31 +29,36 @@ using namespace minimesh;
 // EXAMPLE UTILITY FUNCTIONS
 // ===================
 
-namespace  // Mark the start of anonymous namespace (cant be called from outside)
+namespace // Mark the start of anonymous namespace (cant be called from outside)
 {
 
 // Writes OBJ (and optional VTK) with a consistent naming scheme and sanity check.
 // If `counter` is provided, it's incremented and used to suffix the file name.
 // Otherwise a per-label static counter is used.
 // Returns the full OBJ path written.
-std::string write_mesh_checked(
-    mohecore::Mesh_connectivity& mesh,
-    mohecore::Mesh_io& io,
-    const std::string& label,
-    int* counter = nullptr,
+std::string
+write_mesh_checked(mohecore::Mesh_connectivity & mesh,
+    mohecore::Mesh_io & io,
+    const std::string & label,
+    int * counter = nullptr,
     bool also_vtk = false)
 {
   force_assert(mesh.check_sanity_slowly());
 
   std::string base = "exports/" + label;
 
-  if (counter) {
-    if (*counter > 0) base += "_" + std::to_string(*counter);
+  if(counter)
+  {
+    if(*counter > 0)
+      base += "_" + std::to_string(*counter);
     ++(*counter);
-  } else {
+  }
+  else
+  {
     static std::unordered_map<std::string, int> per_label_counts;
-    int& c = per_label_counts[label];
-    if (c > 0) base += "_" + std::to_string(c);
+    int & c = per_label_counts[label];
+    if(c > 0)
+      base += "_" + std::to_string(c);
     ++c;
   }
 
@@ -61,7 +66,8 @@ std::string write_mesh_checked(
   printf("writing %s\n", obj_path.c_str());
   io.write_obj(obj_path);
 
-  if (also_vtk) {
+  if(also_vtk)
+  {
     const std::string vtk_path = base + ".vtk";
     printf("writing %s\n", vtk_path.c_str());
     io.write_vtk(vtk_path);
@@ -73,7 +79,8 @@ std::string write_mesh_checked(
 ///
 /// Test ARAP deformation functionality
 ///
-void test_arap_deformation(mohecore::Mesh_connectivity& mesh, mohecore::Mesh_io& io)
+void
+test_arap_deformation(mohecore::Mesh_connectivity & mesh, mohecore::Mesh_io & io)
 {
   printf("\n=== ARAP DEFORMATION TEST === \n");
 
@@ -94,12 +101,12 @@ void test_arap_deformation(mohecore::Mesh_connectivity& mesh, mohecore::Mesh_io&
     }
   }
 
-  std::vector<int> anchors = modi_arap.get_anchors();
+  std::vector<int> anchors = modi_arap.get_static_anchors();
   printf("Total anchors set: %d\n", static_cast<int>(anchors.size()));
 
   // Test 1: compute_deformation() - Returns new matrix without modifying mesh
   printf("\n--- Test 1: compute_deformation() ---\n");
-  int test_vertex = 10;  // Pick a vertex to pull
+  int test_vertex = 10; // Pick a vertex to pull
   if(test_vertex < mesh.n_active_vertices())
   {
     auto v = mesh.vertex_at(test_vertex);
@@ -116,7 +123,7 @@ void test_arap_deformation(mohecore::Mesh_connectivity& mesh, mohecore::Mesh_io&
       printf("  ✓ Deformation computed successfully (mesh unchanged)\n");
       printf("  Deformed matrix size: 3 x %ld\n", deformed.cols());
     }
-    catch(const std::exception& e)
+    catch(const std::exception & e)
     {
       printf("  ✗ Deformation failed: %s\n", e.what());
     }
@@ -124,7 +131,7 @@ void test_arap_deformation(mohecore::Mesh_connectivity& mesh, mohecore::Mesh_io&
 
   // Test 2: apply_deformation_to_mesh() - Modifies mesh directly
   printf("\n--- Test 2: apply_deformation_to_mesh() ---\n");
-  test_vertex = 10;  
+  test_vertex = 10;
   if(test_vertex < mesh.n_active_vertices())
   {
     auto v = mesh.vertex_at(test_vertex);
@@ -163,7 +170,7 @@ void test_arap_deformation(mohecore::Mesh_connectivity& mesh, mohecore::Mesh_io&
 
 //   //
 //   //
-//   //  (6) ----- (7) --- (8) 
+//   //  (6) ----- (7) --- (8)
 //   //   |\      / \      /|
 //   //   | \    /   \    / |
 //   //   |  \  /     \  /  |
@@ -200,7 +207,8 @@ void test_arap_deformation(mohecore::Mesh_connectivity& mesh, mohecore::Mesh_io&
 
 } // end of anonymus namespace
 
-int main(int argc, char **argv)
+int
+main(int argc, char ** argv)
 {
   // Create a mesh_connectivity and a mesh reader
   mohecore::Mesh_connectivity mesh;
@@ -210,10 +218,13 @@ int main(int argc, char **argv)
 
   // Check if filename provided as argument
   std::string filename;
-  if (argc > 1) {
+  if(argc > 1)
+  {
     filename = argv[1];
     printf("Processing file: %s\n", filename.c_str());
-  } else {
+  }
+  else
+  {
     // Default behavior - use camel_simple.obj for testing
     filename = "./mesh/camel_simple.obj";
     printf("No filename provided, using default: %s\n", filename.c_str());

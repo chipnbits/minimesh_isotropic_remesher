@@ -432,7 +432,7 @@ update_anchor_visualization()
   }
 
   // Get all anchor vertex indices from ARAP modifier
-  std::vector<int> anchors = globalvars::modi_arap.get_anchors();
+  std::vector<int> anchors = globalvars::modi_arap.get_static_anchors();
 
   // If no anchors, clear visualization
   if(anchors.empty())
