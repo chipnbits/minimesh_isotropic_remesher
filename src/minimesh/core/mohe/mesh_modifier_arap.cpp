@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <minimesh/core/mohe/mesh_modifier_arap.hpp>
 #include <minimesh/core/util/assert.hpp>
+#include <iostream>
 
 namespace minimesh
 {
@@ -79,45 +80,14 @@ Mesh_modifier_arap::initialize()
     R_i = Eigen::Matrix3d::Identity();
   }
 
-  _Bf = Eigen::Matrix3Xd::Zero(3, n_vertices);
-
   // Build cotangent weight adjacency list
   build_adjacency_list();
   build_laplacian_matrix();
-  // Memorize the sparsity structure of L for the solver
-  _solver.analyzePattern(_L);
 }
 
 ///
 // Weights and neighbors builders
 ///
-
-static inline double
-_safe_cot(const Eigen::Vector3d & a, const Eigen::Vector3d & b, double eps = 1e-12)
-{
-  const double denom = a.cross(b).norm();
-  if(denom <= eps)
-    return 0.0; // robust: treat degenerate as 0
-  return a.dot(b) / denom;
-}
-
-static inline double
-_opposite_cot_in_face(Mesh_connectivity & M, Mesh_connectivity::Half_edge_iterator he)
-{
-  if(he.face().index() == M.hole_index)
-    return 0.0;
-
-  // triangle i -> j -> k; opposite angle is at vertex k
-  auto he_next = he.next();
-  int k = he_next.dest().index();
-
-  Eigen::Vector3d vk = M.vertex_at(k).xyz();
-  Eigen::Vector3d vi = he.origin().xyz();
-  Eigen::Vector3d vj = he.dest().xyz();
-
-  // vectors from k to i and k to j
-  return _safe_cot(vi - vk, vj - vk);
-}
 
 std::vector<double>
 _compute_opposite_cot_per_halfedge(Mesh_connectivity & M)
@@ -128,7 +98,29 @@ _compute_opposite_cot_per_halfedge(Mesh_connectivity & M)
     auto he = M.half_edge_at(h);
     if(!he.is_active())
       throw std::runtime_error("inactive half-edge (defragment first)");
-    opp_cot[h] = _opposite_cot_in_face(M, he); // 0 on boundary
+
+    // Case of boundary half-edge, cot is 0.0
+    if (he.face().index() == M.hole_index)
+    {
+      opp_cot[h] = 0.0;
+      continue;
+    }
+
+    // Compute cotangent of angle opposite to half-edge h
+    int k = he.next().dest().index();
+    Eigen::Vector3d xyz_i = he.origin().xyz();
+    Eigen::Vector3d xyz_j = he.dest().xyz();
+    Eigen::Vector3d xyz_k = M.vertex_at(k).xyz();
+    // get the cotangent of angle between (k->i) and (k->j)
+    Eigen::Vector3d v_ki = xyz_i - xyz_k;
+    Eigen::Vector3d v_kj = xyz_j - xyz_k;
+    const double denom = v_ki.cross(v_kj).norm();
+    if(denom <= 1e-12)
+      opp_cot[h] = 0.0; // robust: treat degenerate as 
+    else{
+      opp_cot[h] = v_ki.dot(v_kj) / denom;
+      if (opp_cot[h] < 0.0) opp_cot[h] = 0.0; // robust: clamp negative cotangents
+    }
   }
   return opp_cot;
 }
@@ -165,6 +157,7 @@ Mesh_modifier_arap::build_adjacency_list()
       double w_ij = (opp_cot[he_in.index()] + opp_cot[he_in.twin().index()]) / 2.0;
       // Store the neighbor and weight in adjacency list of vertex i
       _adj[i].push_back(Neighbor{j, w_ij});
+      printf("Adjacency: vertex %d neighbor %d weight %.6f\n", i, j, w_ij);
 
     } while(v_ring.advance()); // Continue around the vertex until return to start
   }
@@ -242,6 +235,12 @@ Mesh_modifier_arap::build_blocks_from_constraints()
   _Lfc.resize(_free_idx.size(), _cons_idx.size());
   _Lff.setFromTriplets(Tf.begin(), Tf.end());
   _Lfc.setFromTriplets(Tfc.begin(), Tfc.end());
+
+  assert(_Lff.rows() == _Lff.cols());
+  for (int k=0; k<_Lff.outerSize(); ++k)
+    for (Eigen::SparseMatrix<double>::InnerIterator it(_Lff,k); it; ++it)
+      if (it.row()==it.col()) assert(it.value() > 0.0);
+
 }
 
 // Fill C (|cons| x 3) with the current target positions of the anchors including temporary moved one
@@ -277,6 +276,9 @@ Mesh_modifier_arap::build_rhs_bf_direct()
   const int nf = (int)_free_idx.size();
   _Bf.resize(nf, 3);
 
+  // Clear Bf
+  _Bf.setZero();
+
   // Compute RHS for each free vertex only (avoid computing for constrained vertices)
   for(int a = 0; a < nf; ++a)
   {
@@ -297,6 +299,7 @@ Mesh_modifier_arap::build_rhs_bf_direct()
 
   // Subtract constraint contribution
   _Bf -= _Lfc * _C;
+  assert((_Bf.array().isFinite()).all());
 }
 
 ///
@@ -342,8 +345,9 @@ Uses the set anchors in original static position with one temporary anchor moved
 Assumes output matrix is already properly sized and initialized with positions.
 All public deformation methods delegate to this.
 */
+
 bool
-Mesh_modifier_arap::_solve_arap(const int temp_anchor, const Eigen::Vector3d & pulled, Eigen::Matrix3Xd & output)
+Mesh_modifier_arap::_solve_arap(const int temp_anchor, const Eigen::Vector3d & pulled, Eigen::Matrix3Xd & output, ArapMode mode)
 {
   // Check if vertex is active
   Mesh_connectivity::Vertex_iterator v_pulled = mesh().vertex_at(temp_anchor);
@@ -375,6 +379,7 @@ Mesh_modifier_arap::_solve_arap(const int temp_anchor, const Eigen::Vector3d & p
     }
     build_blocks_from_constraints();
     // Factorize Lff for solving
+    _solver.analyzePattern(_Lff);
     _solver.compute(_Lff);
     if(_solver.info() != Eigen::Success)
     {
@@ -384,8 +389,50 @@ Mesh_modifier_arap::_solve_arap(const int temp_anchor, const Eigen::Vector3d & p
 
   printf("Deformed mesh with anchor vertex %d \n", temp_anchor);
   printf(" - New anchor position: (%f, %f, %f) \n", pulled.x(), pulled.y(), pulled.z());
-
-  _solve_deformation_with_anchors();
+  // Reset to identity rotations each time
+  // for(auto & R_i : _R)
+  // {
+  //   R_i = Eigen::Matrix3d::Identity();
+  // }
+  
+  if (mode == ArapMode::Quick) {
+    // Quick mode: fixed number of iterations
+    const int max_iters = 1;
+    for (int iter = 0; iter < max_iters; ++iter) {
+      _solve_deformation_with_anchors();
+      _rebuild_rotations();
+    }
+  } else if (mode == ArapMode::Converge) {
+    // Converge mode: iterate until convergence (relative energy change below tol)
+    const double tol = 1e-2;
+    double prev_energy = std::numeric_limits<double>::max();
+    for (int iter = 0; iter < 100; ++iter) {
+      _solve_deformation_with_anchors();
+      _rebuild_rotations();
+      // Compute current energy (not implemented here, placeholder)
+      double curr_energy = 0.0; // compute_current_energy();
+      for (int i = 0; i < mesh().n_total_vertices(); ++i) {
+        const auto &nbrs = _adj[i];
+        const Eigen::Vector3d pi_rest     = _vertices_rest.col(i);
+        const Eigen::Vector3d pi_deformed = _vertices_deformed.col(i);
+        for (const Neighbor &nb : nbrs) {
+          const int j = nb.index;
+          const Eigen::Vector3d pj_rest     = _vertices_rest.col(j);
+          const Eigen::Vector3d pj_deformed = _vertices_deformed.col(j);
+          Eigen::Vector3d e_ij  = pi_rest     - pj_rest;
+          Eigen::Vector3d e_ijp = pi_deformed - pj_deformed;
+          Eigen::Vector3d diff = e_ijp - _R[i] * e_ij;
+          curr_energy += nb.weight * diff.squaredNorm();
+        }
+      }
+      printf("  ARAP iteration %d\n", iter);
+      printf("   Relative Error Energy: %.6f\n", std::abs(prev_energy - curr_energy)/prev_energy);
+      if (std::abs(prev_energy - curr_energy)/prev_energy < tol) {
+        break; // Converged
+      }
+      prev_energy = curr_energy;
+    }
+  }
   // Copy deformed positions to output
   output = _vertices_deformed;
 
@@ -417,6 +464,7 @@ Mesh_modifier_arap::_solve_deformation_with_anchors()
   {
     return false; // Solve failed
   }
+  assert((Pf.array().isFinite()).all());
 
   // Assemble full output positions
   for(int a = 0; a < (int)_free_idx.size(); ++a)
@@ -432,6 +480,65 @@ Mesh_modifier_arap::_solve_deformation_with_anchors()
   return true;
 }
 
+bool Mesh_modifier_arap::_rebuild_rotations()
+{
+  const int n = mesh().n_total_vertices();
+
+  Eigen::Matrix3d S;                // covariance accumulator (Si)
+  Eigen::Matrix3d U, V, R;          // SVD factors and rotation
+  Eigen::Vector3d e_ij, e_ijp;        // edge vectors (rest / deformed)
+  const Eigen::Matrix3d I = Eigen::Matrix3d::Identity();
+
+  // Reuse the SVD object every iteration (no heap allocs for 3x3)
+  Eigen::JacobiSVD<Eigen::Matrix3d> svd;
+  const auto flags = Eigen::ComputeFullU | Eigen::ComputeFullV;
+
+  _R.resize(n);
+
+  for (int i = 0; i < n; ++i)
+  {
+    S.setZero();
+
+    // Sum_j w_ij * p'_{ij} * p_{ij}^T
+    const Eigen::Vector3d pi_rest     = _vertices_rest.col(i);
+    const Eigen::Vector3d pi_deformed = _vertices_deformed.col(i);
+
+    const auto &nbrs = _adj[i];
+    for (const Neighbor &nb : nbrs)
+    {
+      const int j = nb.index;
+      e_ij  = pi_rest     - _vertices_rest.col(j);
+      e_ijp = pi_deformed - _vertices_deformed.col(j);
+      S  += nb.weight * (e_ij * e_ijp.transpose());
+    }
+
+    if (!std::isfinite(S.squaredNorm())) { _R[i] = I; continue; }
+
+    // If a vertex has no neighbors, fall back to identity
+    if (nbrs.empty()) { _R[i] = I; continue; }
+
+    // SVD(S) = U Σ V^T
+    svd.compute(S, flags);
+    U = svd.matrixU();
+    V = svd.matrixV();
+    if (svd.singularValues()(2) < 1e-12) { _R[i] = I; continue; }
+
+    // R = U * D * V^T, with D correcting a possible reflection
+    // (equivalent to flipping the column for the smallest σ)
+    Eigen::Matrix3d D = I;
+    if ((V * U.transpose()).determinant() < 0.0) D(2,2) = -1.0; // Change smallest singular value sign if needed
+
+    R.noalias() = V * D * U.transpose();
+    _R[i] = R;
+  }
+
+  // // Test debug print out rotation matrix for cell 0 with corresponding vertex id
+  // printf("Rotation matrix for cell 0 (vertex %d):\n", 0);
+  // std::cout << "Rotation matrix for cell 0 (vertex " << 0 << "):\n" << _R[0] << std::endl;
+
+  return true;
+}
+
 
 /* ARAP Deformation - In-place version (for GUI performance)
 Uses the set anchors in original static position with one temporary anchor moved to a new position.
@@ -443,7 +550,7 @@ Mesh_modifier_arap::deform_with_temp_anchor(const int vertex_index,
     Eigen::Matrix3Xd & deformed_positions)
 {
   // Direct pass-through to solver (GUI provides pre-allocated matrix)
-  return _solve_arap(vertex_index, new_position, deformed_positions);
+  return _solve_arap(vertex_index, new_position, deformed_positions, ArapMode::Quick);
 }
 
 
@@ -467,7 +574,7 @@ Mesh_modifier_arap::compute_deformation(const int vertex_index, const Eigen::Vec
   }
 
   // Solve
-  bool success = _solve_arap(vertex_index, new_position, result);
+  bool success = _solve_arap(vertex_index, new_position, result, ArapMode::Converge);
 
   if(!success)
   {
@@ -484,7 +591,11 @@ bool
 Mesh_modifier_arap::apply_deformation_to_mesh(const int vertex_index, const Eigen::Vector3d & new_position)
 {
 
-  Eigen::Matrix3Xd deformed_positions = compute_deformation(vertex_index, new_position);
+  // Allocate new matrix for deformed positions
+  Eigen::Matrix3Xd deformed_positions(3, mesh().n_total_vertices());
+
+  // Solve
+  _solve_arap(vertex_index, new_position, deformed_positions, ArapMode::Converge);
 
   // Apply deformed positions back to mesh
   for(int i = 0; i < mesh().n_total_vertices(); ++i)

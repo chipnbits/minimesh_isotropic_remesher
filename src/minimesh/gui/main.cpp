@@ -1,4 +1,5 @@
 // From standard library
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -45,6 +46,9 @@ Eigen::Matrix3Xd deformed_vertex_positions; // Current displayed vertex position
 //
 bool show_collapse_overlay = false; // Toggle state for edge collapse visualization
 int deform_mode = 0; // Toggle state for deform mode (enables anchor selection and ARAP)
+//
+int const DEFORMATION_INTERVAL = 33; // Throttle interval in milliseconds
+std::chrono::steady_clock::time_point last_deform_time = std::chrono::steady_clock::now();
 }
 
 
@@ -157,6 +161,12 @@ void
 mouse_moved(int x, int y)
 {
   bool should_redraw = false;
+  // Only process at a limited interval to avoid overloading
+  auto now = std::chrono::steady_clock::now();
+  auto duration_since_last = std::chrono::duration_cast<std::chrono::milliseconds>(now - globalvars::last_deform_time);
+  if(duration_since_last.count() < globalvars::DEFORMATION_INTERVAL)
+    return;
+  globalvars::last_deform_time = now;
   should_redraw = should_redraw || globalvars::viewer.mouse_moved(x, y);
   {
     // Check for vertex pull and record new position and vertex

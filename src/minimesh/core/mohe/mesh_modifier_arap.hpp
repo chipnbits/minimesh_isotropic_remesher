@@ -27,6 +27,7 @@ namespace mohecore
 class Mesh_modifier_arap
 {
 public:
+  enum class ArapMode { Quick, Converge };
   struct Neighbor
   {
     int index; // Neighbor vertex index
@@ -252,7 +253,7 @@ private:
   Eigen::SparseMatrix<double> _Lfc; // Free-anchor Laplacian matrix
 
   std::vector<Eigen::Matrix3d> _R; // Rotation matrices for each vertex
-  Eigen::MatrixXd _Bf; // Reduced right-hand side matrix for free vertices
+  Eigen::MatrixXd _Bf;
   Eigen::MatrixXd _C; // Constraint matrix
   Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> _solver;
 
@@ -265,13 +266,16 @@ private:
   // new_position: the new position for the temporary anchor
   // output: output matrix (3 x n_vertices) with deformed positions
   // Returns true if deformation was successful
-  bool _solve_arap(const int temp_anchor, const Eigen::Vector3d & pulled, Eigen::Matrix3Xd & output);
+  bool _solve_arap(const int temp_anchor,
+                   const Eigen::Vector3d & pulled,
+                   Eigen::Matrix3Xd & output,
+                   ArapMode mode = ArapMode::Quick);
 
   Eigen::MatrixXd _gather_constraint_matrix();
 
   // Perform an iteration to update the internal deformation state using Lp = B and rotation estimation
   bool _solve_deformation_with_anchors();
-
+  bool _rebuild_rotations();
   // Perform an iteration of R_i estimation
   bool _solve_rotation_estimation();
 };
