@@ -378,8 +378,7 @@ Mesh_modifier_arap::_solve_arap(const int temp_anchor, const Eigen::Vector3d & p
       }
     }
     build_blocks_from_constraints();
-    // Factorize Lff for solving
-    _solver.analyzePattern(_Lff);
+    // Factorize Lff for solving (compute does both pattern analysis and factorization)
     _solver.compute(_Lff);
     if(_solver.info() != Eigen::Success)
     {
