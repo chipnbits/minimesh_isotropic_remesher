@@ -86,7 +86,7 @@ void Mesh_buffer::set_vertex_positions(const Eigen::Matrix3Xf & positions)
 void Mesh_buffer::set_colorful_spheres(const Eigen::VectorXi & vertex_indices, const Eigen::Matrix4Xf & colors)
 {
 	force_assert(vertex_indices.size() == colors.cols());
-	force_assert(vertex_indices.maxCoeff() < (int)vertices.cols());
+	force_assert(vertex_indices.size() == 0 || vertex_indices.maxCoeff() < (int)vertices.cols());
 	spheres_vertex_indices = vertex_indices;
 	spheres_colors = colors;
 }
