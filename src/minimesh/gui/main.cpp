@@ -15,6 +15,7 @@
 #include <minimesh/core/mohe/mesh_modifier_arap.hpp>
 #include <minimesh/core/mohe/mesh_modifier_edge_collapse.hpp>
 #include <minimesh/core/mohe/mesh_modifier_loop_subdivision.hpp>
+#include <minimesh/core/mohe/fixed_uv_param.hpp>
 #include <minimesh/core/util/assert.hpp>
 #include <minimesh/core/util/foldertools.hpp>
 #include <minimesh/core/util/numbers.hpp>
@@ -505,6 +506,64 @@ deform_mode_changed(int)
 }
 }
 
+void
+test_uv_param()
+  // Get boundary loop and mark boundary vertices in red
+{
+  mohecore::Fixed_boundary_uv_param uv_param(globalvars::mesh);
+
+  if(uv_param.compute_parameterization())
+  {
+    std::vector<int> boundary_vertices = uv_param.get_boundary_loop();
+    printf("Found %zu boundary vertices\n", boundary_vertices.size());
+
+    // Move boundary vertices to their UV positions in XY plane (mesh buffer only)
+    Eigen::Matrix3Xd new_positions(3, globalvars::mesh.n_total_vertices());
+    for(int i = 0; i < globalvars::mesh.n_total_vertices(); ++i)
+    {
+      new_positions.col(i) = Eigen::Vector3d(0,0,0);
+    }
+
+    double scale = 100.0;
+    for(int vertex_idx : boundary_vertices)
+    {
+      Eigen::Vector2d uv = uv_param.get_uv_at_vertex(vertex_idx);
+      Eigen::Vector3d new_pos(scale * uv[0], scale * uv[1], 0.0);
+      new_positions.col(vertex_idx) = new_pos;
+    }
+
+    globalvars::viewer.get_mesh_buffer().set_vertex_positions(new_positions.cast<float>());
+
+    // Compute defragmentation maps to handle vertex indexing
+    mohecore::Mesh_connectivity::Defragmentation_maps defrag;
+    globalvars::mesh.compute_defragmention_maps(defrag);
+
+    // Prepare vertex colors (default to white for all vertices)
+    int n_active_verts = globalvars::mesh.n_active_vertices();
+    Eigen::Matrix4Xf vertex_colors(4, n_active_verts);
+    vertex_colors.setConstant(0.7f); // Default: gray
+
+    // Mark boundary vertices in red
+    for(int vertex_idx : boundary_vertices)
+    {
+      // Map to defragmented index
+      int defrag_idx = defrag.old2new_vertices[vertex_idx];
+
+      // Set red color (R=1, G=0, B=0, A=1)
+      vertex_colors.col(defrag_idx) << 1.0f, 0.0f, 0.0f, 1.0f;
+    }
+
+    // Apply vertex colors to mesh buffer
+    globalvars::viewer.get_mesh_buffer().set_vertex_colors(vertex_colors);
+
+    printf("Marked %zu boundary vertices in red\n", boundary_vertices.size());
+  }
+  else
+  {
+    printf("No boundary found in mesh\n");
+  }
+}
+
 
 int
 main(int argc, char * argv[])
@@ -519,7 +578,7 @@ main(int argc, char * argv[])
   {
     // retrieve filepath of /home/sghys/projects/CPSC524-modeling/mesh/tetra_complex.obj
 
-    mohecore::Mesh_io(globalvars::mesh).read_auto("/home/sghys/projects/CPSC524-modeling/mesh/camel_simple.obj");
+    mohecore::Mesh_io(globalvars::mesh).read_auto("/home/sghys/projects/CPSC524-modeling/hw4_mesh/cat.obj");
   }
   else // otherwise use the address specified in the command line
   {
@@ -563,6 +622,8 @@ main(int argc, char * argv[])
     globalvars::mesh.compute_defragmention_maps(defrag);
     globalvars::viewer.get_mesh_buffer().rebuild(globalvars::mesh, defrag);
   }
+
+  test_uv_param();
 
   // Setup background modifier for edge collapse
   globalvars::modi_edge.initialize();
