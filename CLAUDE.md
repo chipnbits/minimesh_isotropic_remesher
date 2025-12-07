@@ -1,3 +1,5 @@
+LOOK IN TASKS.JSON FOR BUILD INSTRUCTIONS
+
 # Minimesh Half-Edge Data Structure Reference
 
 This document provides a concise reference for the half-edge mesh data structure used in the minimesh library for mesh traversal and modification operations. Other details helpful for context are found in `minimesh_extension_guide.md`.

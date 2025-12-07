@@ -1,24 +1,6 @@
 {
   "configurations": [
     {
-      "name": "Windows",
-      "browse": {
-        "path": [
-          "${workspaceFolder}"
-          ],
-        "limitSymbolsToIncludedHeaders": true
-      },
-      "includePath": [
-        "${workspaceFolder}",
-        "D:/Libraries/glui/debug/include",
-        "D:/Libraries/eigen/default"
-      ],
-      "defines": ["WIN32", "_WIN32", "_MSC_VER"],
-      "cStandard": "c11",
-      "cppStandard": "c++14",
-      "intelliSenseMode": "clang-x64"
-    },
-    {
       "name": "Linux",
       "browse": {
         "path": [
@@ -33,7 +15,6 @@
         "${workspaceFolder}/third-party/freeglut/bin-opensuse-gcc731/debug/include",
         "${workspaceFolder}/third-party/eigen",
         "${workspaceFolder}/third-party/doctest"
-
       ],
       "defines": [],
       "cStandard": "c11",
