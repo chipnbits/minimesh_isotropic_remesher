@@ -1,5 +1,8 @@
 #include <minimesh/core/mohe/fixed_uv_param.hpp>
 #include <minimesh/core/util/assert.hpp>
+#include <Eigen/Sparse>
+#include <Eigen/Dense>
+#include <vector>
 #include <set>
 #include <cmath>
 
@@ -342,16 +345,82 @@ Fixed_boundary_uv_param::compute_edge_weights()
 bool
 Fixed_boundary_uv_param::solve_interior_uvs()
 {
-  // TODO: Implement interior UV solving
-  // Common methods:
-  // 1. Harmonic/Tutte: Set each interior vertex to average of neighbors
-  // 2. LSCM: Least Squares Conformal Maps
-  // 3. ARAP: As-Rigid-As-Possible
+  const int n_interior = static_cast<int>(_interior_vertex_indices.size());
+  if(n_interior == 0) return true;
 
-  // For now, just initialize to zero
-  for(int v_idx : _interior_vertex_indices)
+  std::vector<int> mesh_to_solver_idx(mesh().n_total_vertices(), -1);
+  for(int i = 0; i < n_interior; ++i)
   {
-    _uv_coords[v_idx] = Eigen::Vector2d(0.0, 0.0);
+    mesh_to_solver_idx[_interior_vertex_indices[i]] = i;
+  }
+
+  // System: (I - Lambda_interior) * U_interior = Lambda_boundary * U_boundary
+  Eigen::SparseMatrix<double> A(n_interior, n_interior);
+  std::vector<Eigen::Triplet<double>> coefficients;
+  
+  Eigen::VectorXd b_u = Eigen::VectorXd::Zero(n_interior);
+  Eigen::VectorXd b_v = Eigen::VectorXd::Zero(n_interior);
+
+  // 3. Fill the Matrix and RHS
+  for(int i = 0; i < n_interior; ++i)
+  {
+    int v_idx = _interior_vertex_indices[i];
+
+    // Diagonal entry: A(i,i) = 1
+    coefficients.push_back(Eigen::Triplet<double>(i, i, 1.0));
+
+    // Iterate over neighbors of the interior vertex v_idx
+    auto ring_iter = mesh().vertex_ring_at(v_idx);
+    do
+    {
+      auto he_outgoing = ring_iter.half_edge().twin();
+      int neighbor_idx = he_outgoing.dest().index();
+      
+      // Get normalized weight lambda_ij (stored on the outgoing half-edge index)
+      double weight = _lambda_ij[he_outgoing.index()];
+
+      // Check if neighbor is Interior or Boundary
+      int neighbor_solver_idx = mesh_to_solver_idx[neighbor_idx];
+
+      if(neighbor_solver_idx != -1) 
+      {
+        // CASE: Neighbor is Interior
+        coefficients.push_back(Eigen::Triplet<double>(i, neighbor_solver_idx, -weight));
+      }
+      else
+      {
+        // CASE: Neighbor is Boundary (Fixed)
+        // Move to RHS: +lambda_ij * u_fixed 
+        Eigen::Vector2d fixed_uv = _uv_coords[neighbor_idx];
+        b_u[i] += weight * fixed_uv.x();
+        b_v[i] += weight * fixed_uv.y();
+      }
+
+    } while(ring_iter.advance());
+  }
+
+  A.setFromTriplets(coefficients.begin(), coefficients.end());
+  Eigen::SparseLU<Eigen::SparseMatrix<double>> solver;
+  solver.compute(A);
+
+  if(solver.info() != Eigen::Success)
+  {
+    return false;
+  }
+
+  Eigen::VectorXd x_u = solver.solve(b_u);
+  Eigen::VectorXd x_v = solver.solve(b_v);
+
+  if(solver.info() != Eigen::Success)
+  {
+    return false;
+  }
+
+  // Store results back to _uv_coords
+  for(int i = 0; i < n_interior; ++i)
+  {
+    int v_idx = _interior_vertex_indices[i];
+    _uv_coords[v_idx] = Eigen::Vector2d(x_u[i], x_v[i]);
   }
 
   return true;
@@ -375,10 +444,13 @@ Fixed_boundary_uv_param::compute_parameterization()
 
   // Step 2: Map boundary vertices to UV space
   map_boundary_to_uv();
-  // Step 2.5: Compute edge weights
-  return compute_edge_weights();
+  // Step 2.5: Compute edge weights to populate _Dij and _lambda_ij
+  if (!compute_edge_weights())
+  {
+    return false;
+  }
 
-  // Step 3: Solve for interior vertex positions
+  // Step 3: Solve for interior vertex positions using _lambda_ij weights
   bool success = solve_interior_uvs();
 
   if(success)
@@ -388,6 +460,7 @@ Fixed_boundary_uv_param::compute_parameterization()
 
   return success;
 }
+
 
 
 

@@ -152,6 +152,21 @@ main(int argc, char ** argv)
   printf("Total faces: %d \n", mesh.n_active_faces());
   printf("Total half-edges: %d \n", mesh.n_active_half_edges());
 
+  mohecore::Fixed_boundary_uv_param uv_param(mesh);
+  uv_param.compute_parameterization();
+  std::vector<Eigen::Vector2d> uv_coords = uv_param.get_uv_coords();
+
+  // overwrite coords into the 2D plane
+  for(int v = 0; v < mesh.n_total_vertices(); ++v)
+  {
+    mohecore::Mesh_connectivity::Vertex_iterator vertex = mesh.vertex_at(v);
+    if(vertex.is_active())
+    {
+      Eigen::Vector2d uv = uv_param.get_uv_at_vertex(vertex.index());
+      vertex.data().xyz = Eigen::Vector3d(uv[0], uv[1], 0.0);
+    }
+  }
+
   write_mesh_checked(mesh, io, "cat_cli", nullptr, false);
 
   return 0;
