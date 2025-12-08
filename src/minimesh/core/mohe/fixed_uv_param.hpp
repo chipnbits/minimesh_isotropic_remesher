@@ -91,6 +91,9 @@ private:
   // Index corresponds to vertex index in the mesh
   std::vector<Eigen::Vector2d> _uv_coords;
 
+  std::vector<double> _Dij; // weights for each half-edge
+  std::vector<double> _lambda_ij; // normalized weights for each half-edge
+
   // Flag to track if parameterization has been computed
   bool _is_computed;
 
@@ -109,6 +112,14 @@ private:
   // (This is where you'd implement harmonic/Tutte/LSCM/etc.)
   //
   bool solve_interior_uvs();
+
+  //
+  // Helper: Compute cotangent weight for each half-edge, length = n_half_edges
+  //
+  bool compute_edge_weights();
+
+
+
 };
 
 

@@ -231,6 +231,112 @@ Fixed_boundary_uv_param::map_boundary_to_uv()
 }
 
 //
+// Compute cotangent weight for each half-edge
+// Returns a vector indexed by half-edge index
+// Twin half-edges will have the same weight value
+//
+bool
+Fixed_boundary_uv_param::compute_edge_weights()
+{
+  const int n_halfedges = mesh().n_total_half_edges();
+  _Dij.resize(n_halfedges, 0.0);
+  _lambda_ij.resize(n_halfedges, 0.0);
+
+  // HARVEST COTANGENT WEIGHTS
+  for(int h = 0; h < n_halfedges; ++h)
+  {
+    auto he = mesh().half_edge_at(h);
+    int twin_idx = he.twin().index();
+
+    if(!he.is_active())
+      continue;  // Skip inactive half-edges
+
+    // Case of boundary half-edge, cotangent is 0.0
+    if (he.face().index() == mesh().hole_index)
+    {
+      continue;
+    }
+
+    // Compute cotangent of angle opposite to half-edge h
+    // The opposite vertex is at the next().dest() position
+    int k = he.next().dest().index();
+    Eigen::Vector3d xyz_i = he.origin().xyz();
+    Eigen::Vector3d xyz_j = he.dest().xyz();
+    Eigen::Vector3d xyz_k = mesh().vertex_at(k).xyz();
+
+    // Get the cotangent of angle at k between edges (k->i) and (k->j)
+    Eigen::Vector3d v_ki = xyz_i - xyz_k;
+    Eigen::Vector3d v_kj = xyz_j - xyz_k;
+    const double denom = v_ki.cross(v_kj).norm();
+
+    // Robust approach, only accumulate for non-degenerate angles
+    if(denom > 1e-12)
+    {
+      double cot_value = v_ki.dot(v_kj) / denom;
+      _Dij[h] += cot_value;
+      _Dij[twin_idx] += cot_value;  // Same weight for twin
+    }
+  }
+
+  // NORMALIZE WEIGHTS
+  // sum of outgoing weights at each vertex is 1.0
+  const int n_vertices = mesh().n_total_vertices();
+  for (int v=0; v < n_vertices; ++v)
+  {
+    // Sum of outgoing weights
+    double weight_sum = 0.0;
+
+    // Iterate over outgoing half-edges to get sum of weights
+    auto ring_iter = mesh().vertex_ring_at(v);
+    do
+    {
+      auto he = ring_iter.half_edge().twin(); // outgoing half-edge (iterator points to incoming)
+      if(he.is_active())
+      {
+        weight_sum += _Dij[he.index()];
+      }
+    } while(ring_iter.advance());
+
+    // Normalize outgoing weights using the sum
+    if(weight_sum > 1e-12)
+    {
+      ring_iter = mesh().vertex_ring_at(v);
+      do
+      {
+        auto he = ring_iter.half_edge().twin();
+        if(he.is_active())
+        {
+          int he_idx = he.index();
+          _lambda_ij[he_idx] = _Dij[he_idx] / weight_sum;
+        }
+      } while(ring_iter.advance());
+    }
+  }
+
+  // PRint summary statistics
+  // double min_weight = std::numeric_limits<double>::max();;
+  // double max_weight = std::numeric_limits<double>::lowest();
+  // double avg_weight = 0.0;
+  // int count = 0;
+  // for(int h = 0; h < n_halfedges; ++h)
+  // {
+  //   if(mesh().half_edge_at(h).is_active())
+  //   {
+  //     double w = _lambda_ij[h];
+  //     if(w < min_weight) min_weight = w;
+  //     if(w > max_weight) max_weight = w;
+  //     avg_weight += w;
+  //     count++;
+  //   }
+  // }
+  // if(count > 0)
+  //   avg_weight /= static_cast<double>(count);
+  // printf("Cotangent Weights: min = %.6f, max = %.6f, avg = %.6f\n", min_weight, max_weight, avg_weight);
+
+  return true;
+}
+
+//
 // Solve for interior vertex UV positions
 //
 bool
@@ -269,7 +375,8 @@ Fixed_boundary_uv_param::compute_parameterization()
 
   // Step 2: Map boundary vertices to UV space
   map_boundary_to_uv();
-  return true;
+  // Step 2.5: Compute edge weights
+  return compute_edge_weights();
 
   // Step 3: Solve for interior vertex positions
   bool success = solve_interior_uvs();
