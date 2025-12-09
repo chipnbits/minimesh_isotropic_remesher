@@ -517,23 +517,6 @@ test_uv_param()
     std::vector<int> boundary_vertices = uv_param.get_boundary_loop();
     printf("Found %zu boundary vertices\n", boundary_vertices.size());
 
-    // Move boundary vertices to their UV positions in XY plane (mesh buffer only)
-    Eigen::Matrix3Xd new_positions(3, globalvars::mesh.n_total_vertices());
-    for(int i = 0; i < globalvars::mesh.n_total_vertices(); ++i)
-    {
-      new_positions.col(i) = Eigen::Vector3d(0,0,0);
-    }
-
-    double scale = 100.0;
-    for(int vertex_idx : boundary_vertices)
-    {
-      Eigen::Vector2d uv = uv_param.get_uv_at_vertex(vertex_idx);
-      Eigen::Vector3d new_pos(scale * uv[0], scale * uv[1], 0.0);
-      new_positions.col(vertex_idx) = new_pos;
-    }
-
-    globalvars::viewer.get_mesh_buffer().set_vertex_positions(new_positions.cast<float>());
-
     // Compute defragmentation maps to handle vertex indexing
     mohecore::Mesh_connectivity::Defragmentation_maps defrag;
     globalvars::mesh.compute_defragmention_maps(defrag);
