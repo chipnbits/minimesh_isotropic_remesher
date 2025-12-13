@@ -12,9 +12,16 @@ namespace mohecore
 class LSCM_uv_param
 {
 public:
-  LSCM_uv_param(Mesh_connectivity & m)
+  enum class PinningStrategy
+  {
+    MAX_DISTANCE,    // Choose two boundary vertices with maximum Euclidean distance
+    LONGEST_EDGE     // Choose endpoints of the longest boundary edge
+  };
+
+  LSCM_uv_param(Mesh_connectivity & m, PinningStrategy strategy = PinningStrategy::MAX_DISTANCE)
   : _mesh(m)
   , _is_computed(false)
+  , _pinning_strategy(strategy)
   {
   }
 
@@ -38,6 +45,7 @@ private:
   Mesh_connectivity & _mesh;
   std::vector<Eigen::Vector2d> _uv_coords;
   bool _is_computed;
+  PinningStrategy _pinning_strategy;
 
   int _pin0 = -1;
   int _pin1 = -1;

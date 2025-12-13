@@ -181,7 +181,7 @@ main(int argc, char ** argv)
   else if (algorithm == "lscm")
   {
     // Create a UV parameterization object
-    mohecore::LSCM_uv_param uv_param(mesh);
+    mohecore::LSCM_uv_param uv_param(mesh, mohecore::LSCM_uv_param::PinningStrategy::MAX_DISTANCE);
     uv_param.compute_parameterization();
 
     for (int v = 0; v < mesh.n_total_vertices(); ++v)

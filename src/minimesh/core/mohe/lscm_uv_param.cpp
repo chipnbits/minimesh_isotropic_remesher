@@ -1,6 +1,7 @@
 #include <minimesh/core/mohe/lscm_uv_param.hpp>
 #include <minimesh/core/util/assert.hpp>
 #include <Eigen/Sparse>
+#include <Eigen/SparseQR>
 #include <Eigen/Dense>
 #include <vector>
 #include <set>
@@ -14,12 +15,6 @@ namespace mohecore
 bool
 LSCM_uv_param::choose_pinned_vertices()
 {
-  // collect boundary vertices
-  std::vector<int> boundary;
-  const int nV = mesh().n_total_vertices();
-
-  std::vector<bool> is_boundary(nV, false);
-
   // find one boundary half-edge
   Mesh_connectivity::Half_edge_iterator start_he;
   bool found = false;
@@ -35,99 +30,90 @@ LSCM_uv_param::choose_pinned_vertices()
   }
   if(!found) return false; // closed mesh – out of scope
 
-  // walk boundary loop
-  auto cur_he = start_he;
-  do
-  {
-    auto v = cur_he.origin();
-    if(v.is_active())
-    {
-      int idx = v.index();
-      if(!is_boundary[idx])
-      {
-        is_boundary[idx] = true;
-        boundary.push_back(idx);
-      }
-    }
-    cur_he = cur_he.next();
-  } while(!cur_he.is_equal(start_he));
-
-  if(boundary.size() < 2) return false;
-
-  // brute-force max Euclidean distance on boundary vertices
-  double best_d2 = -1.0;
   int best_i = -1, best_j = -1;
 
-  for(size_t a = 0; a < boundary.size(); ++a)
+  if(_pinning_strategy == PinningStrategy::LONGEST_EDGE)
   {
-    Eigen::Vector3d pa = mesh().vertex_at(boundary[a]).xyz();
-    for(size_t b = a + 1; b < boundary.size(); ++b)
+    // Find the longest edge on the boundary
+    double best_d2 = -1.0;
+    auto cur_he = start_he;
+    do
     {
-      Eigen::Vector3d pb = mesh().vertex_at(boundary[b]).xyz();
-      double d2 = (pa - pb).squaredNorm();
-      if(d2 > best_d2)
+      if(cur_he.is_active())
       {
-        best_d2 = d2;
-        best_i = boundary[a];
-        best_j = boundary[b];
+        auto v0 = cur_he.origin();
+        auto v1 = cur_he.dest();
+        if(v0.is_active() && v1.is_active())
+        {
+          Eigen::Vector3d p0 = v0.xyz();
+          Eigen::Vector3d p1 = v1.xyz();
+          double d2 = (p1 - p0).squaredNorm();
+          if(d2 > best_d2)
+          {
+            best_d2 = d2;
+            best_i = v0.index();
+            best_j = v1.index();
+          }
+        }
+      }
+      cur_he = cur_he.next();
+    } while(!cur_he.is_equal(start_he));
+  }
+  else // PinningStrategy::MAX_DISTANCE
+  {
+    // collect boundary vertices
+    std::vector<int> boundary;
+    const int nV = mesh().n_total_vertices();
+    std::vector<bool> is_boundary(nV, false);
+
+    // walk boundary loop
+    auto cur_he = start_he;
+    do
+    {
+      auto v = cur_he.origin();
+      if(v.is_active())
+      {
+        int idx = v.index();
+        if(!is_boundary[idx])
+        {
+          is_boundary[idx] = true;
+          boundary.push_back(idx);
+        }
+      }
+      cur_he = cur_he.next();
+    } while(!cur_he.is_equal(start_he));
+
+    if(boundary.size() < 2) return false;
+
+    // brute-force max Euclidean distance on boundary vertices
+    double best_d2 = -1.0;
+
+    for(size_t a = 0; a < boundary.size(); ++a)
+    {
+      Eigen::Vector3d pa = mesh().vertex_at(boundary[a]).xyz();
+      for(size_t b = a + 1; b < boundary.size(); ++b)
+      {
+        Eigen::Vector3d pb = mesh().vertex_at(boundary[b]).xyz();
+        double d2 = (pa - pb).squaredNorm();
+        if(d2 > best_d2)
+        {
+          best_d2 = d2;
+          best_i = boundary[a];
+          best_j = boundary[b];
+        }
       }
     }
   }
+
+  if(best_i < 0 || best_j < 0) return false;
 
   _pin0 = best_i;
   _pin1 = best_j;
 
-  // Fix them in texture space, e.g. along x-axis
-  _uv_coords[_pin0] = Eigen::Vector2d(0.0, 0.0);
-  _uv_coords[_pin1] = Eigen::Vector2d(1.0, 0.0);
+  _uv_coords[_pin0] = Eigen::Vector2d(0.0, 1.0);
+  _uv_coords[_pin1] = Eigen::Vector2d(0.0, 0.0);
 
   return true;
-}
-
-static void
-triangle_3d_to_2d(const Eigen::Vector3d& p0,
-                  const Eigen::Vector3d& p1,
-                  const Eigen::Vector3d& p2,
-                  double& x0, double& y0,
-                  double& x1, double& y1,
-                  double& x2, double& y2)
-{
-  Eigen::Vector3d e1 = p1 - p0;
-  Eigen::Vector3d e2 = p2 - p0;
-
-  double len_e1 = e1.norm();
-  if(len_e1 < 1e-12)
-  {
-    x0=y0=x1=y1=x2=y2=0.0;
-    return;
-  }
-
-  Eigen::Vector3d ex = e1 / len_e1;
-  Eigen::Vector3d n  = e1.cross(e2);
-  double n_norm = n.norm();
-  if(n_norm < 1e-12)
-  {
-    // Degenerate triangle – just project onto e1
-    Eigen::Vector3d ey = Eigen::Vector3d::UnitY();
-    if(fabs(ex.dot(ey)) > 0.9) ey = Eigen::Vector3d::UnitZ();
-    ey = (ey - ey.dot(ex)*ex).normalized();
-
-    x0 = y0 = 0.0;
-    x1 = len_e1; y1 = 0.0;
-    Eigen::Vector3d v2 = p2 - p0;
-    x2 = v2.dot(ex);
-    y2 = v2.dot(ey);
-    return;
-  }
-  n.normalize();
-  Eigen::Vector3d ey = n.cross(ex);
-
-  x0 = 0.0; y0 = 0.0;
-  x1 = len_e1; y1 = 0.0;
-
-  Eigen::Vector3d v2 = p2 - p0;
-  x2 = v2.dot(ex);
-  y2 = v2.dot(ey);
 }
 
 bool
@@ -137,7 +123,7 @@ LSCM_uv_param::build_lscm_system(Eigen::SparseMatrix<double>& A,
   const int nV = _mesh.n_total_vertices();
   const int nF = _mesh.n_total_faces();
 
-  // map mesh vertex -> compact index for free vertices
+  // map mesh vertex -> compact index for free vertices (converts mesh indices to linear system indices)
   std::vector<int> mesh_to_free(nV, -1);
   int free_count = 0;
   for(int v = 0; v < nV; ++v)
@@ -150,128 +136,132 @@ LSCM_uv_param::build_lscm_system(Eigen::SparseMatrix<double>& A,
 
   if(free_count == 0) return false;
 
-  //https://www.cs.jhu.edu/~misha/Fall09/Levy02.pdf
-  // A has 4 M_f blocks that are Fx(free) each
-  const int max_rows = 2 * nF; // 2 rows per face (for x and y components)
-  const int n_cols   = 2 * free_count;
+  // System size: 2 rows per face (X and Y constraints), 2 cols per free vertex
+  const int n_rows = 2 * nF; 
+  const int n_cols = 2 * free_count;
 
-  A.resize(max_rows, n_cols);
-  b = Eigen::VectorXd::Zero(max_rows);
+  A.resize(n_rows, n_cols);
+  b = Eigen::VectorXd::Zero(n_rows);
 
   std::vector<Eigen::Triplet<double>> triples;
-  triples.reserve(max_rows * 10);
+  triples.reserve(n_rows * 6); // Approx 6 entries per row
 
   int current_face = 0;
   for(int f = 0; f < nF; ++f)
   {
     auto face = _mesh.face_at(f);
-    if(!face.is_active()) continue;
-    if(face.is_equal(_mesh.hole())) continue;
+    if(!face.is_active() || face.is_equal(_mesh.hole())) continue;
 
+    // --- 1. Get Triangle Vertices, edges of face ---
     auto he0 = face.half_edge();
     auto he1 = he0.next();
     auto he2 = he1.next();
 
     int va = he0.origin().index();
     int vb = he1.origin().index();
-    int vc = he2.origin().index(); // usce c as the pivot
+    int vc = he2.origin().index(); 
 
-    Eigen::Vector3d pa = he0.origin().xyz();
-    Eigen::Vector3d pb = he1.origin().xyz();
-    Eigen::Vector3d pc = he2.origin().xyz();
+    Eigen::Vector3d p1 = he0.origin().xyz();
+    Eigen::Vector3d p2 = he1.origin().xyz();
+    Eigen::Vector3d p3 = he2.origin().xyz();
 
-    // triangle area
-    Eigen::Vector3d e0 = pb - pa;
-    Eigen::Vector3d e1 = pc - pa;
-    double dT_f = e0.cross(e1).norm();
-    if(dT_f < 1e-16) continue;
+    // --- 2. Geometric Constants---
+    // We need to match P3 - P1 = s * Rot * (P2 - P1)
+    Eigen::Vector3d e12 = p2 - p1; // Vector P1->P2
+    Eigen::Vector3d e13 = p3 - p1; // Vector P1->P3
 
-    double w = std::sqrt(dT_f); // row weight, matches energy sum A_T*|...|^2
+    double len12_sq = e12.squaredNorm();
+    double cross_norm = e12.cross(e13).norm(); // 2 * Area
+    double dot_prod   = e12.dot(e13);
 
-    // angle at vertex c
-    Eigen::Vector3d v1 = pa - pc;
-    Eigen::Vector3d v2 = pb - pc;
-    double len1 = v1.norm();
-    double len2 = v2.norm();
-    if(len1 < 1e-16 || len2 < 1e-16) continue;
+    if(len12_sq < 1e-12) continue; // Degenerate edge
 
-    double cos_theta = v1.dot(v2) / (len1 * len2);
-    cos_theta = std::max(-1.0, std::min(1.0, cos_theta));
-    double sin_theta = std::sqrt(std::max(0.0, 1.0 - cos_theta * cos_theta));
+    // Calculate the coefficients directly without trig functions
+    // C_sim = s * cos(alpha) 
+    // -> sin(a3)/sin(a2) x cos(a1) = |cxa|/|c||a| x |a.b|/|a||b| x |b||c|/|bxc|= |a.b|/|a|^2
+    // S_sim = s * sin(alpha)
+    // -> |a x b| = |a||b|sin(alpha) but |axb| is double  triangle area so |axb| = |axc| = |bxc|
+    // -> sin(a3)/sin(a2) x sin(a1) = |axb|/|a||b| x  |cxa|/|c||a| x |b||c|/|bxc| = |axb|/|a|^2
+    double C_sim = dot_prod / len12_sq;
+    double S_sim = cross_norm / len12_sq;
 
-    int row_real = 2 * current_face; 
-    int row_imag = row_real + 1;
+    // --- 3. Build Linear Rows ---
+    // We minimize || (u3,v3) - (u1,v1) - R * ((u2,v2) - (u1,v1)) ||^2
+    // R is scaled rotation matrix R=
+    //   C_sim  * (u2-u1) S_sim * (v2-v1)
+    //   -S_sim * (u2-u1) C_sim * (v2-v1)
+    // So we have two equations per face:
 
-    auto add_coeff = [&](int mesh_v,
-                         double coeff_u,
-                         double coeff_v,
-                         int row)
-    {
-      // x = [u_free(0..free_count-1), v_free(0..free_count-1)]
-      if(mesh_v == _pin0 || mesh_v == _pin1)
-      {
-        // move to RHS: sum_free(...) = - sum_pinned(coeff * value)
-        Eigen::Vector2d uv = _uv_coords[mesh_v];
-        double u_p = uv.x();
-        double v_p = uv.y();
+    // Row 1 (X-residual): u3 - u1 - Rot_x = 0
+    //   => u3 - u1 - [ C(u2-u1) + S(v2-v1) ] = 0
+    //   => u3 + (C - 1)u1 - C*u2 - S*v2 + S*v1 = 0
+    // Coefficients for X row:
+    //   u1: (C_sim - 1)
+    //   v1: S_sim
+    //   u2: -C_sim
+    //   v2: -S_sim
+    //   u3: 1
+    //   v3: 0
 
-        b[row] -= w * (coeff_u * u_p + coeff_v * v_p);
-      }
-      else
-      {
-        int free_id = mesh_to_free[mesh_v];
-        if(free_id < 0) return; 
+    // Row 2 (Y-residual): v3 - v1 - Rot_y = 0
+    //   => v3 - v1 - [ -S(u2-u1) + C(v2-v1) ] = 0
+    //   => v3 + (C - 1)v1 - C*v2 + S*u2 - S*u1 = 0
+    // Coefficients for Y row:
+    //   u1: -S_sim
+    //   v1: (C_sim - 1)
+    //   u2: S_sim
+    //   v2: -C_sim
+    //   u3: 0
+    //   v3: 1
+    
+    // Row indices in matrix for two equations per face
+    int row_x = 2 * current_face;
+    int row_y = 2 * current_face + 1;
 
-        int col_u = free_id;
-        int col_v = free_id + free_count;
-
-        if(std::abs(coeff_u) > 0.0)
-          triples.emplace_back(row, col_u, w * coeff_u);
-        if(std::abs(coeff_v) > 0.0)
-          triples.emplace_back(row, col_v, w * coeff_v);
+    // Helper lambda to clean up triplet insertion
+    auto add_triplet = [&](int v_idx, double val_u, double val_v, int row) {
+      if(v_idx == _pin0 || v_idx == _pin1) {
+        // Pinned: Move to RHS (b vector)
+        double u_pinned = _uv_coords[v_idx].x();
+        double v_pinned = _uv_coords[v_idx].y();
+        b[row] -= (val_u * u_pinned + val_v * v_pinned);
+      } else {
+        // Free: Add to Matrix A with augmented U vector [u..., v...]
+        int col_u = mesh_to_free[v_idx];
+        int col_v = col_u + free_count;
+        if(std::abs(val_u) > 1e-9) triples.emplace_back(row, col_u, val_u);
+        if(std::abs(val_v) > 1e-9) triples.emplace_back(row, col_v, val_v);
       }
     };
 
-    // === REAL ROW (from real part of complex equation) ===
-    // u_a - u_c - (cosθ (u_b - u_c) - sinθ (v_b - v_c)) = 0
-    // -> coefficients:
-    //   u_a:  +1
-    //   u_b:  -cosθ
-    //   u_c:  cosθ - 1
-    //   v_b:  +sinθ
-    //   v_c:  -sinθ
+    // --- Fill Row X ---
+    int idx1 = va;
+    int idx2 = vb;
+    int idx3 = vc;
 
-    add_coeff(va, /*coeff_u=*/ 1.0,      /*coeff_v=*/ 0.0,      row_real);
-    add_coeff(vb, /*coeff_u=*/-cos_theta,/*coeff_v=*/ sin_theta,row_real);
-    add_coeff(vc, /*coeff_u=*/ cos_theta - 1.0,
-                 /*coeff_v=*/-sin_theta, row_real);
+    add_triplet(idx1, (C_sim - 1.0),  S_sim,     row_x);
+    add_triplet(idx2, -C_sim,        -S_sim,     row_x);
+    add_triplet(idx3, 1.0,            0.0,       row_x);
 
-    // === IMAG ROW (from imaginary part) ===
-    // v_a - v_c - (sinθ (u_b - u_c) + cosθ (v_b - v_c)) = 0
-    // -> coefficients:
-    //   u_b:  -sinθ
-    //   u_c:  +sinθ
-    //   v_a:  +1
-    //   v_b:  -cosθ
-    //   v_c:  cosθ - 1
+    // --- Fill Row Y ---
+    add_triplet(idx1, -S_sim,        (C_sim - 1.0), row_y);
+    add_triplet(idx2, S_sim,         -C_sim,        row_y);
+    add_triplet(idx3, 0.0,            1.0,          row_y);
 
-    add_coeff(va, /*coeff_u=*/ 0.0,      /*coeff_v=*/ 1.0,      row_imag);
-    add_coeff(vb, /*coeff_u=*/-sin_theta,/*coeff_v=*/-cos_theta,row_imag);
-    add_coeff(vc, /*coeff_u=*/ sin_theta,
-                 /*coeff_v=*/ cos_theta - 1.0, row_imag);
-
-    ++current_face;
+    current_face++;
   }
+
 
   int used_rows = 2 * current_face;
   if(used_rows == 0) return false;
 
   A.conservativeResize(used_rows, n_cols);
   b.conservativeResize(used_rows);
-
   A.setFromTriplets(triples.begin(), triples.end());
+
   return true;
 }
+
 bool
 LSCM_uv_param::solve_system(const Eigen::SparseMatrix<double>& A,
                             const Eigen::VectorXd& b)
