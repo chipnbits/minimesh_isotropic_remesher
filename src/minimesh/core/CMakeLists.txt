@@ -33,6 +33,10 @@ set(SOURCE_FILES
   mohe/mesh_modifier_arap.cpp
   mohe/mesh_analysis.hpp
   mohe/mesh_analysis.cpp
+  mohe/fixed_uv_param.hpp
+  mohe/fixed_uv_param.cpp
+  mohe/lscm_uv_param.hpp
+  mohe/lscm_uv_param.cpp
  )
 
  

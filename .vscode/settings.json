@@ -11,8 +11,7 @@
   "cmake.copyCompileCommands": "${workspaceFolder}/compile_commands.json",
 
   // --- cpptools off for IntelliSense; keep for debugging ---
-  "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
-  "C_Cpp.intelliSenseEngine": "enabled",
+  "C_Cpp.intelliSenseEngine": "default",
   "C_Cpp.clang_format_style": "file",
   "C_Cpp.clang_format_fallbackStyle": "Google",
 

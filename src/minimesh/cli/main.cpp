@@ -22,6 +22,8 @@
 #include <minimesh/core/mohe/mesh_modifier_arap.hpp>
 #include <minimesh/core/mohe/mesh_modifier_edge_collapse.hpp>
 #include <minimesh/core/mohe/mesh_modifier_loop_subdivision.hpp>
+#include <minimesh/core/mohe/fixed_uv_param.hpp>
+#include <minimesh/core/mohe/lscm_uv_param.hpp>
 
 using namespace minimesh;
 
@@ -74,210 +76,6 @@ write_mesh_checked(mohecore::Mesh_connectivity & mesh,
   }
 
   return obj_path;
-}
-
-///
-/// Test ARAP deformation functionality
-///
-void
-test_arap_cylinder(mohecore::Mesh_connectivity & mesh, mohecore::Mesh_io & io)
-{
-  printf("\n=== ARAP DEFORMATION TEST === \n");
-
-  // Initialize ARAP modifier
-  mohecore::Mesh_modifier_arap modi_arap(mesh);
-  modi_arap.initialize();
-  printf("ARAP modifier initialized.\n");
-
-  // Add some anchor points (first few vertices)
-  printf("\nAdding anchor points...\n");
-  for(int i = 0; i < 48 && i < mesh.n_active_vertices(); ++i)
-  {
-    if(modi_arap.add_anchor(i))
-    {
-      auto v = mesh.vertex_at(i);
-      Eigen::Vector3d pos = v.xyz();
-      printf("  - Anchor %d at position (%.3f, %.3f, %.3f)\n", i, pos.x(), pos.y(), pos.z());
-    }
-  }
-
-  std::vector<int> anchors = modi_arap.get_static_anchors();
-  printf("Total anchors set: %d\n", static_cast<int>(anchors.size()));
-
-  // Test 2: apply_deformation_to_mesh() - Modifies mesh directly
-  printf("\n--- Test 2: apply_deformation_to_mesh() ---\n");
-  int test_vertex = 4741;
-  if(test_vertex < mesh.n_active_vertices())
-  {
-    auto v = mesh.vertex_at(test_vertex);
-    Eigen::Vector3d original_pos = v.xyz();
-    Eigen::Vector3d pulled_pos = original_pos + Eigen::Vector3d(-3.0, 0.0, -4.0);
-
-    printf("Testing apply_deformation_to_mesh() on vertex %d\n", test_vertex);
-    printf("  Original position: (%.3f, %.3f, %.3f)\n", original_pos.x(), original_pos.y(), original_pos.z());
-    printf("  Target position: (%.3f, %.3f, %.3f)\n", pulled_pos.x(), pulled_pos.y(), pulled_pos.z());
-
-    if(modi_arap.apply_deformation_to_mesh(test_vertex, pulled_pos))
-    {
-      printf("  ✓ Deformation applied to mesh successfully\n");
-
-      // Write out the deformed mesh
-      printf("\nWriting deformed mesh...\n");
-      write_mesh_checked(mesh, io, "arap_deformed", nullptr, false);
-      printf("Deformed mesh written to exports/arap_deformed.{obj,vtk}\n");
-    }
-    else
-    {
-      printf("  ✗ Deformation failed\n");
-    }
-  }
-
-  printf("\n=== ARAP TEST COMPLETE === \n");
-}
-
-void
-test_arap_deformation(mohecore::Mesh_connectivity & mesh, mohecore::Mesh_io & io)
-{
-  printf("\n=== ARAP DEFORMATION TEST === \n");
-
-  // Initialize ARAP modifier
-  mohecore::Mesh_modifier_arap modi_arap(mesh);
-  modi_arap.initialize();
-  printf("ARAP modifier initialized.\n");
-
-  // Add some anchor points (first few vertices)
-  printf("\nAdding anchor points...\n");
-  for(int i = 0; i < 5 && i < mesh.n_active_vertices(); ++i)
-  {
-    if(modi_arap.add_anchor(i))
-    {
-      auto v = mesh.vertex_at(i);
-      Eigen::Vector3d pos = v.xyz();
-      printf("  - Anchor %d at position (%.3f, %.3f, %.3f)\n", i, pos.x(), pos.y(), pos.z());
-    }
-  }
-
-  std::vector<int> anchors = modi_arap.get_static_anchors();
-  printf("Total anchors set: %d\n", static_cast<int>(anchors.size()));
-
-  // Test 1: compute_deformation() - Returns new matrix without modifying mesh
-  printf("\n--- Test 1: compute_deformation() ---\n");
-  int test_vertex = 10; // Pick a vertex to pull
-  if(test_vertex < mesh.n_active_vertices())
-  {
-    auto v = mesh.vertex_at(test_vertex);
-    Eigen::Vector3d original_pos = v.xyz();
-    Eigen::Vector3d pulled_pos = original_pos + Eigen::Vector3d(0.5, 0.5, 0.0);
-
-    printf("Testing compute_deformation() on vertex %d\n", test_vertex);
-    printf("  Original position: (%.3f, %.3f, %.3f)\n", original_pos.x(), original_pos.y(), original_pos.z());
-    printf("  Target position: (%.3f, %.3f, %.3f)\n", pulled_pos.x(), pulled_pos.y(), pulled_pos.z());
-
-    try
-    {
-      Eigen::Matrix3Xd deformed = modi_arap.compute_deformation(test_vertex, pulled_pos);
-      printf("  ✓ Deformation computed successfully (mesh unchanged)\n");
-      printf("  Deformed matrix size: 3 x %ld\n", deformed.cols());
-    }
-    catch(const std::exception & e)
-    {
-      printf("  ✗ Deformation failed: %s\n", e.what());
-    }
-  }
-
-  // Test 2: apply_deformation_to_mesh() - Modifies mesh directly
-  printf("\n--- Test 2: apply_deformation_to_mesh() ---\n");
-  test_vertex = 10;
-  if(test_vertex < mesh.n_active_vertices())
-  {
-    auto v = mesh.vertex_at(test_vertex);
-    Eigen::Vector3d original_pos = v.xyz();
-    Eigen::Vector3d pulled_pos = original_pos + Eigen::Vector3d(0.5, 0.5, 0.0);
-
-    printf("Testing apply_deformation_to_mesh() on vertex %d\n", test_vertex);
-    printf("  Original position: (%.3f, %.3f, %.3f)\n", original_pos.x(), original_pos.y(), original_pos.z());
-    printf("  Target position: (%.3f, %.3f, %.3f)\n", pulled_pos.x(), pulled_pos.y(), pulled_pos.z());
-
-    if(modi_arap.apply_deformation_to_mesh(test_vertex, pulled_pos))
-    {
-      printf("  ✓ Deformation applied to mesh successfully\n");
-
-      // Write out the deformed mesh
-      printf("\nWriting deformed mesh...\n");
-      write_mesh_checked(mesh, io, "arap_deformed", nullptr, false);
-      printf("Deformed mesh written to exports/arap_deformed.{obj,vtk}\n");
-    }
-    else
-    {
-      printf("  ✗ Deformation failed\n");
-    }
-  }
-
-  printf("\n=== ARAP TEST COMPLETE === \n");
-}
-
-///
-/// Simplify mesh by removing specified number of vertices using QEM edge collapse
-///
-void
-simplify_mesh(mohecore::Mesh_connectivity & mesh,
-    mohecore::Mesh_io & io,
-    int vertices_to_remove,
-    const std::string & output_name)
-{
-  printf("\n=== MESH SIMPLIFICATION === \n");
-
-  int initial_vertices = mesh.n_active_vertices();
-  int initial_faces = mesh.n_active_faces();
-  int target_vertices = initial_vertices - vertices_to_remove;
-
-  printf("Initial mesh stats:\n");
-  printf("  Vertices: %d\n", initial_vertices);
-  printf("  Faces: %d\n", initial_faces);
-  printf("Target: Remove %d vertices (final count: %d)\n", vertices_to_remove, target_vertices);
-
-  // Initialize edge collapse modifier
-  printf("\nInitializing QEM edge collapse...\n");
-  mohecore::Mesh_modifier_edge_collapse modifier(mesh);
-  modifier.initialize();
-  printf("QEM initialized.\n");
-
-  // Perform edge collapses
-  int collapses_performed = 0;
-  int collapses_failed = 0;
-
-  auto start_time = std::chrono::high_resolution_clock::now();
-
-
-
-  // Perform edge collapses up to the requested number
-  int collapses = 0;
-  mohecore::Mesh_modifier_edge_collapse::MergeCandidate candidate{0.0, {0, 0}, Eigen::Vector3d::Zero(), 0};
-  while(collapses < vertices_to_remove && modifier.get_min_pair(candidate))
-  {
-    if(modifier.collapse_edge(candidate))
-    {
-      printf("Collapsing edge (%d, %d) with error %.9f\n", candidate.pair.v1, candidate.pair.v2, candidate.error);
-      collapses++;
-    }
-  }
-
-  auto end_time = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-
-  printf("\nSimplification complete!\n");
-  printf("  Edge collapses performed: %d\n", collapses_performed);
-  printf("  Edge collapses failed: %d\n", collapses_failed);
-  printf("  Final vertices: %d (removed %d)\n", mesh.n_active_vertices(), initial_vertices - mesh.n_active_vertices());
-  printf("  Final faces: %d (removed %d)\n", mesh.n_active_faces(), initial_faces - mesh.n_active_faces());
-  printf("  Time elapsed: %ld ms\n", duration.count());
-
-  // Write simplified mesh
-  printf("\nWriting simplified mesh...\n");
-  write_mesh_checked(mesh, io, output_name, nullptr, false);
-  printf("Simplified mesh written to exports/%s.obj\n", output_name.c_str());
-
-  printf("\n=== SIMPLIFICATION COMPLETE === \n");
 }
 
 //
@@ -336,6 +134,7 @@ main(int argc, char ** argv)
 
   // Check if filename provided as argument
   std::string filename;
+  std::string algorithm = "fixed";
   if(argc > 1)
   {
     filename = argv[1];
@@ -344,8 +143,13 @@ main(int argc, char ** argv)
   else
   {
     // Default behavior - use camel_simple.obj for testing
-    filename = "./mesh/cylinder.obj";
+    filename = "./hw4_mesh/cat.obj";
     printf("No filename provided, using default: %s\n", filename.c_str());
+  }
+  if (argc > 2)
+  {
+    algorithm = argv[2];
+    printf("Using algorithm: %s\n", algorithm.c_str());
   }
 
   // Read the specified mesh file
@@ -356,10 +160,51 @@ main(int argc, char ** argv)
   printf("Total faces: %d \n", mesh.n_active_faces());
   printf("Total half-edges: %d \n", mesh.n_active_half_edges());
 
-  // simplify_mesh(mesh, io, 100, "cylinder_simple");
+  if (algorithm == "fixed")
+  {
+    // Create a UV parameterization object
+    mohecore::Fixed_boundary_uv_param uv_param(mesh);
 
-  // Run full ARAP deformation test
-  test_arap_deformation(mesh, io);
-  // test_arap_deformation(mesh, io);
+    uv_param.compute_parameterization();
+
+    // overwrite coords into the 2D plane
+    for(int v = 0; v < mesh.n_total_vertices(); ++v)
+    {
+      mohecore::Mesh_connectivity::Vertex_iterator vertex = mesh.vertex_at(v);
+      if(vertex.is_active())
+      {
+        Eigen::Vector2d uv = uv_param.get_uv_at_vertex(vertex.index());
+        vertex.data().xyz = Eigen::Vector3d(uv[0], uv[1], 0.0);
+      }
+    }
+  }
+  else if (algorithm == "lscm")
+  {
+    // Create a UV parameterization object
+    mohecore::LSCM_uv_param uv_param(mesh, mohecore::LSCM_uv_param::PinningStrategy::MAX_DISTANCE);
+    uv_param.compute_parameterization();
+
+    for (int v = 0; v < mesh.n_total_vertices(); ++v)
+    {
+      mohecore::Mesh_connectivity::Vertex_iterator vertex = mesh.vertex_at(v);
+      if(vertex.is_active())
+      {
+        Eigen::Vector2d uv = uv_param.get_uv_at_vertex(vertex.index());
+        vertex.data().xyz = Eigen::Vector3d(uv[0], uv[1], 0.0);
+      }
+    }
+  }
+  else
+  {
+    printf("Unknown algorithm: %s\n", algorithm.c_str());
+    return -1;
+  }
+  // Reuse the same filename but to export the result (take only filename without path or .obj)
+  std::string mesh_out_path = filename.substr(filename.find_last_of("/\\") + 1);
+  mesh_out_path = mesh_out_path.substr(0, mesh_out_path.find_last_of('.'));
+  mesh_out_path = mesh_out_path + "_cli";
+  write_mesh_checked(mesh, io, mesh_out_path, nullptr, false);
+
   return 0;
 } // end of main()
+

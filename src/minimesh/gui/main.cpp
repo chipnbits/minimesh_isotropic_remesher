@@ -15,6 +15,8 @@
 #include <minimesh/core/mohe/mesh_modifier_arap.hpp>
 #include <minimesh/core/mohe/mesh_modifier_edge_collapse.hpp>
 #include <minimesh/core/mohe/mesh_modifier_loop_subdivision.hpp>
+#include <minimesh/core/mohe/fixed_uv_param.hpp>
+#include <minimesh/core/mohe/lscm_uv_param.hpp>
 #include <minimesh/core/util/assert.hpp>
 #include <minimesh/core/util/foldertools.hpp>
 #include <minimesh/core/util/numbers.hpp>
@@ -47,7 +49,9 @@ Eigen::Matrix3Xd deformed_vertex_positions; // Current displayed vertex position
 bool show_collapse_overlay = false; // Toggle state for edge collapse visualization
 int deform_mode = 0; // Toggle state for deform mode (enables anchor selection and ARAP)
 //
-int const DEFORMATION_INTERVAL = 33; // Throttle interval in milliseconds
+int param_algorithm = 0; // 0 = Harmonic (Fixed), 1 = LSCM
+//
+int const DEFORMATION_INTERVAL = 10; // Throttle interval in milliseconds
 std::chrono::steady_clock::time_point last_deform_time = std::chrono::steady_clock::now();
 }
 
@@ -503,8 +507,89 @@ deform_mode_changed(int)
 
   glutPostRedisplay();
 }
-}
 
+void
+parameterization_pressed(int)
+{
+  printf("Parameterization button pressed with algorithm: %s\n",
+         globalvars::param_algorithm == 0 ? "Harmonic (Fixed)" : "LSCM");
+
+  bool success = false;
+
+  if(globalvars::param_algorithm == 0)
+  {
+    // Harmonic parameterization (Fixed boundary)
+    mohecore::Fixed_boundary_uv_param uv_param(globalvars::mesh);
+    success = uv_param.compute_parameterization();
+
+    if(success)
+    {
+      printf("Harmonic parameterization computed successfully\n");
+
+      // Update deformed_vertex_positions with UV coordinates (z=0)
+      for(int v = 0; v < globalvars::mesh.n_total_vertices(); ++v)
+      {
+        mohecore::Mesh_connectivity::Vertex_iterator vertex = globalvars::mesh.vertex_at(v);
+        if(vertex.is_active())
+        {
+          Eigen::Vector2d uv = uv_param.get_uv_at_vertex(vertex.index());
+          globalvars::deformed_vertex_positions.col(v) = Eigen::Vector3d(uv[0], uv[1], 0.0);
+        }
+      }
+    }
+  }
+  else if(globalvars::param_algorithm == 1)
+  {
+    // LSCM parameterization
+    mohecore::LSCM_uv_param uv_param(globalvars::mesh, mohecore::LSCM_uv_param::PinningStrategy::MAX_DISTANCE);
+    success = uv_param.compute_parameterization();
+
+    if(success)
+    {
+      printf("LSCM parameterization computed successfully\n");
+
+      // Update deformed_vertex_positions with UV coordinates (z=0)
+      for(int v = 0; v < globalvars::mesh.n_total_vertices(); ++v)
+      {
+        mohecore::Mesh_connectivity::Vertex_iterator vertex = globalvars::mesh.vertex_at(v);
+        if(vertex.is_active())
+        {
+          Eigen::Vector2d uv = uv_param.get_uv_at_vertex(vertex.index());
+          globalvars::deformed_vertex_positions.col(v) = Eigen::Vector3d(uv[0], uv[1], 0.0);
+        }
+      }
+    }
+  }
+
+  if(success)
+  {
+    // Update the viewer buffer with the new flattened positions
+    globalvars::viewer.get_mesh_buffer().set_vertex_positions(globalvars::deformed_vertex_positions.cast<float>());
+
+    // Compute new bounding box from UV coordinates to rescale camera view
+    Eigen::AlignedBox3f bbox;
+    for(int v = 0; v < globalvars::mesh.n_total_vertices(); ++v)
+    {
+      mohecore::Mesh_connectivity::Vertex_iterator vertex = globalvars::mesh.vertex_at(v);
+      if(vertex.is_active())
+      {
+        bbox.extend(globalvars::deformed_vertex_positions.col(v).cast<float>());
+      }
+    }
+
+    // Re-initialize viewer with new bounding box to rescale camera
+    globalvars::viewer.initialize(bbox);
+    printf("Camera view rescaled to UV parameterization\n");
+
+    // Redraw
+    glutPostRedisplay();
+  }
+  else
+  {
+    printf("Parameterization failed\n");
+  }
+}
+}
 
 int
 main(int argc, char * argv[])
@@ -519,7 +604,7 @@ main(int argc, char * argv[])
   {
     // retrieve filepath of /home/sghys/projects/CPSC524-modeling/mesh/tetra_complex.obj
 
-    mohecore::Mesh_io(globalvars::mesh).read_auto("/home/sghys/projects/CPSC524-modeling/mesh/camel_simple.obj");
+    mohecore::Mesh_io(globalvars::mesh).read_auto("/home/sghys/projects/CPSC524-modeling/hw4_mesh/cat.obj");
   }
   else // otherwise use the address specified in the command line
   {
@@ -634,6 +719,22 @@ main(int argc, char * argv[])
   // Add Deform checkbox that controls the entire deformation mode
   globalvars::glui->add_checkbox_to_panel(
       panel_arap, "Deform", &globalvars::deform_mode, -1, freeglutcallback::deform_mode_changed);
+
+  //
+  // Add UV Parameterization Panel
+  //
+  GLUI_Panel * panel_param = globalvars::glui->add_panel("UV Parameterization");
+
+  // Add radio buttons for algorithm selection
+  GLUI_RadioGroup * radio_group_param =
+      globalvars::glui->add_radiogroup_to_panel(panel_param, &globalvars::param_algorithm);
+  globalvars::glui->add_radiobutton_to_group(radio_group_param, "Harmonic");
+  globalvars::glui->add_radiobutton_to_group(radio_group_param, "LSCM");
+
+  // Add Parameterization button
+  GLUI_Button * button_param =
+      globalvars::glui->add_button_to_panel(panel_param, "Compute Parameterization", -1, freeglutcallback::parameterization_pressed);
+  button_param->set_w(200);
 
   //
   // Add show spheres button to demo how to draw spheres on top of the vertices
