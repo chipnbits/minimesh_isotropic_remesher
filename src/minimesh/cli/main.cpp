@@ -16,14 +16,15 @@
 #include <minimesh/core/util/assert.hpp>
 #include <minimesh/core/util/macros.hpp>
 
+#include <minimesh/core/mohe/fixed_uv_param.hpp>
+#include <minimesh/core/mohe/lscm_uv_param.hpp>
 #include <minimesh/core/mohe/mesh_analysis.hpp>
 #include <minimesh/core/mohe/mesh_connectivity.hpp>
 #include <minimesh/core/mohe/mesh_io.hpp>
 #include <minimesh/core/mohe/mesh_modifier_arap.hpp>
 #include <minimesh/core/mohe/mesh_modifier_edge_collapse.hpp>
 #include <minimesh/core/mohe/mesh_modifier_loop_subdivision.hpp>
-#include <minimesh/core/mohe/fixed_uv_param.hpp>
-#include <minimesh/core/mohe/lscm_uv_param.hpp>
+#include <minimesh/core/mohe/remesher/remesher_isotropic.hpp>
 
 using namespace minimesh;
 
@@ -134,7 +135,7 @@ main(int argc, char ** argv)
 
   // Check if filename provided as argument
   std::string filename;
-  std::string algorithm = "fixed";
+
   if(argc > 1)
   {
     filename = argv[1];
@@ -143,13 +144,8 @@ main(int argc, char ** argv)
   else
   {
     // Default behavior - use camel_simple.obj for testing
-    filename = "./hw4_mesh/cat.obj";
+    filename = "./mesh/example_mesh.obj";
     printf("No filename provided, using default: %s\n", filename.c_str());
-  }
-  if (argc > 2)
-  {
-    algorithm = argv[2];
-    printf("Using algorithm: %s\n", algorithm.c_str());
   }
 
   // Read the specified mesh file
@@ -160,45 +156,21 @@ main(int argc, char ** argv)
   printf("Total faces: %d \n", mesh.n_active_faces());
   printf("Total half-edges: %d \n", mesh.n_active_half_edges());
 
-  if (algorithm == "fixed")
-  {
-    // Create a UV parameterization object
-    mohecore::Fixed_boundary_uv_param uv_param(mesh);
+  mohecore::Mesh_modifier_uniform_remeshing remesher(mesh);
+  remesher.collapse_edge(6); // Collapse edge with half-edge index 0
 
-    uv_param.compute_parameterization();
+  printf("Total vertices: %d \n", mesh.n_active_vertices());
+  printf("Total faces: %d \n", mesh.n_active_faces());
+  printf("Total half-edges: %d \n", mesh.n_active_half_edges());
 
-    // overwrite coords into the 2D plane
-    for(int v = 0; v < mesh.n_total_vertices(); ++v)
-    {
-      mohecore::Mesh_connectivity::Vertex_iterator vertex = mesh.vertex_at(v);
-      if(vertex.is_active())
-      {
-        Eigen::Vector2d uv = uv_param.get_uv_at_vertex(vertex.index());
-        vertex.data().xyz = Eigen::Vector3d(uv[0], uv[1], 0.0);
-      }
-    }
-  }
-  else if (algorithm == "lscm")
+  for(int i = 0; i < mesh.n_total_faces(); ++i)
   {
-    // Create a UV parameterization object
-    mohecore::LSCM_uv_param uv_param(mesh, mohecore::LSCM_uv_param::PinningStrategy::MAX_DISTANCE);
-    uv_param.compute_parameterization();
+    auto f = mesh.face_at(i);
+    if(!f.is_active())
+      continue;
+    printf("Face %d: half-edge %d\n", f.index(), f.data().half_edge);
+  }
 
-    for (int v = 0; v < mesh.n_total_vertices(); ++v)
-    {
-      mohecore::Mesh_connectivity::Vertex_iterator vertex = mesh.vertex_at(v);
-      if(vertex.is_active())
-      {
-        Eigen::Vector2d uv = uv_param.get_uv_at_vertex(vertex.index());
-        vertex.data().xyz = Eigen::Vector3d(uv[0], uv[1], 0.0);
-      }
-    }
-  }
-  else
-  {
-    printf("Unknown algorithm: %s\n", algorithm.c_str());
-    return -1;
-  }
   // Reuse the same filename but to export the result (take only filename without path or .obj)
   std::string mesh_out_path = filename.substr(filename.find_last_of("/\\") + 1);
   mesh_out_path = mesh_out_path.substr(0, mesh_out_path.find_last_of('.'));
@@ -207,4 +179,3 @@ main(int argc, char ** argv)
 
   return 0;
 } // end of main()
-
