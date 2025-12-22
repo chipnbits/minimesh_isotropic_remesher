@@ -158,7 +158,7 @@ main(int argc, char ** argv)
 
   mohecore::Mesh_modifier_uniform_remeshing remesher(mesh);
 
-  remesher.remesh(0.02,7); // Target edge length 0.5, 1 iteration
+  remesher.remesh(0.02, 5); // Target edge length 0.5, 1 iteration
 
   // Reuse the same filename but to export the result (take only filename without path or .obj)
   std::string mesh_out_path = filename.substr(filename.find_last_of("/\\") + 1);

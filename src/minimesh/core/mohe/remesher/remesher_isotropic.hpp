@@ -24,13 +24,26 @@ public:
   {
   }
 
+  enum class SmoothingType
+  {
+    Uniform, // Simple barycenter of neighbors (Isotropic)
+    Barycenters // Area-weighted or CVT (Centroidal Voronoi) approximation
+  };
+
+  struct GeometryCache
+  {
+    std::vector<Eigen::Vector3d> vertex_normals;
+    std::vector<Eigen::Vector3d> face_barycenters;
+    std::vector<double> face_areas;
+  };
+
   // Get the underlying mesh
   Mesh_connectivity & mesh() { return _m; }
   const Mesh_connectivity & mesh() const { return _m; }
 
   //
   // Main Entry Point
-  // Executes the iterative remeshing algorithm described by 
+  // Executes the iterative remeshing algorithm described by
   //
   // Params:
   //   target_edge_length: The uniform global target length (L)
@@ -44,7 +57,9 @@ public:
 
   int INTERIOR_VALENCE = 6;
   int BOUNDARY_VALENCE = 4;
-  double EDGE_FLIP_THRESHOLD_DOT = 0.5; // Cosine of angle threshold for normal deviation check
+  double EDGE_FLIP_THRESHOLD_DOT = 0.7; // Cosine of angle threshold for normal deviation check
+  double LAMBDA_SMOOTHING_DAMPING = 0.2; // Damping factor for vertex smoothing
+  int N_SMOOTHING_ITERS = 5; // Number of smoothing iterations
 
   // ============================================================
   // Core Remeshing Operations
@@ -52,19 +67,17 @@ public:
 
   //
   // 1. Edge Splitting
-  // Iterates over all edges. If edge_length > target_length*alpha the edge is split at its midpoint. Paper value is 4/3.
+  // Iterates over all edges. If edge_length > target_length*alpha the edge is split at its midpoint. Lit value is 4/3.
   void split_long_edges(double target_length, double alpha = 4.0 / 3.0);
 
   //
   // 2. Edge Collapsing
-  // Iterates over all edges. If edge_length < beta * target_length, the edge is collapsed.
-  // Recommended beta is 4/5.
+  // Iterates over all edges. If edge_length < beta * target_length, the edge is collapsed. Lit value is 4/5.
   void collapse_short_edges(double target_length, double beta = 4.0 / 5.0);
 
   //
-  // 3. Edge Flipping [cite: 17]
-  // Flips edges to improve vertex valence towards the ideal value (6).
-  //
+  // 3. Edge Flipping
+  // Flips edges to improve vertex valence towards the ideal value 4-boundary, 6-internal.
   void flip_edges_to_optimize_valence();
 
   //
@@ -73,7 +86,7 @@ public:
   // Usually involves moving vertex toward the centroid of its neighbors,
   // then projecting back to the tangent plane (or original surface if available).
   //
-  void tangential_smoothing(int smoothing_iters = 1);
+  void tangential_smoothing(int smoothing_iters = 1, SmoothingType type = SmoothingType::Barycenters);
 
   // ============================================================
   // Low-Level Mesh Modifiers
@@ -129,12 +142,15 @@ public:
   // Computes the centroid of the one-ring neighbors
   Eigen::Vector3d compute_barycenter(int v_index) const;
 
-  // Compute a surface normal given three points
-  Eigen::Vector3d calculate_normal(const Eigen::Vector3d& p0,
-                                  const Eigen::Vector3d& p1,
-                                  const Eigen::Vector3d& p2) const;
-                                
-};
+  // Compute a surface normal given three points in ccw cycle order
+  Eigen::Vector3d calculate_normal(const Eigen::Vector3d & p0,
+      const Eigen::Vector3d & p1,
+      const Eigen::Vector3d & p2) const;
 
+  GeometryCache compute_geometry_cache();
+
+  // Populate un-normalized (area dependent) vertex normals for the entire mesh
+  std::vector<Eigen::Vector3d> compute_vertex_normals();
+};
 } // end of mohecore
 } // end of minimesh

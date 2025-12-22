@@ -6,6 +6,7 @@
 
 #include <Eigen/Dense>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <minimesh/core/mohe/mesh_analysis.hpp>
 #include <minimesh/core/mohe/remesher/remesher_isotropic.hpp>
@@ -25,14 +26,24 @@ namespace mohecore
 void
 Mesh_modifier_uniform_remeshing::remesh(double target_edge_length, int iterations)
 {
+  // Start time
+  auto start_time = std::chrono::high_resolution_clock::now();
   for(int i = 0; i < iterations; ++i)
   {
     printf("Remeshing Iteration %d / %d\n", i + 1, iterations);
+    printf("Splitting long edges...\n");
     split_long_edges(target_edge_length, 4.0 / 3.0);
+    printf("Collapsing short edges...\n");
     collapse_short_edges(target_edge_length, 4.0 / 5.0);
+    printf("Flipping edges to optimize valence...\n");
     flip_edges_to_optimize_valence();
-    tangential_smoothing(1);
+    printf("Performing tangential smoothing...\n");
+    tangential_smoothing(N_SMOOTHING_ITERS, SmoothingType::Barycenters);
   }
+  // End time
+  auto end_time = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> elapsed = end_time - start_time;
+  printf("Remeshing completed in %.3f seconds.\n", elapsed.count());
 }
 
 // ============================================================
@@ -67,7 +78,6 @@ Mesh_modifier_uniform_remeshing::split_long_edges(double target_length, double a
     if(!he.is_active())
       continue;
     length = get_edge_length(he.index());
-    printf("Found edge %d of length %f, against threshold %f\n", he.index(), length, t);
     if(length > t)
     {
       split_edge(he.index(), 0.5);
@@ -103,7 +113,6 @@ Mesh_modifier_uniform_remeshing::collapse_short_edges(double target_length, doub
     if(!he.is_active())
       continue;
     length = get_edge_length(he.index());
-    printf("Found edge %d of length %f, against threshold %f\n", he.index(), length, t);
     if(length < t)
     {
       collapse_edge(he.index(), t);
@@ -137,32 +146,120 @@ Mesh_modifier_uniform_remeshing::flip_edges_to_optimize_valence()
 
     if(should_flip_edge(he.index()) && is_legal_flip(he.index()))
     {
-      if (flip_edge(he.index())) {
-        printf("Flipped edge %d to improve valence\n", he.index());
+      if(flip_edge(he.index()))
+      {
+        // printf("Flipped edge %d to improve valence\n", he.index());
       }
     }
   }
 }
 
 void
-Mesh_modifier_uniform_remeshing::tangential_smoothing(int smoothing_iters)
+Mesh_modifier_uniform_remeshing::tangential_smoothing(int smoothing_iters, SmoothingType type)
 {
-  // TODO: Implement tangential smoothing
-
-  // # optimise vertex positions
-  // for each vertex in vertices :
-  // tangentialRelaxation ( vertex )
-  // # project vertices back onto surface
-  // for each vertex in vertices :
-  // backProjection ( vertex )
+  const int num_vertices = mesh().n_total_vertices();
+  // Placeholder for adaptive sizing field (not used in isotropic remeshing) default uniform
+  std::vector<double> adaptive_sizing_field = std::vector<double>(num_vertices, 1.0);
 
 
-  // For each vertex:
-  //   1. Compute barycenter of one-ring neighbors
-  //   2. Move vertex towards barycenter
-  //   3. Project back to tangent plane (or skip projection for simple version)
+  for(int iter = 0; iter < smoothing_iters; ++iter)
+  {
+    // Precompute mesh geometry information
+    auto geometry_cache = compute_geometry_cache();
+    // Storage for new vertex positions and if they need update
+    auto new_pos = std::vector<Eigen::Vector3d>(num_vertices, Eigen::Vector3d(0, 0, 0));
+    std::vector<bool> needs_update(num_vertices, false);
 
-  
+    for(int vi = 0; vi < num_vertices; ++vi)
+    {
+      auto vert = mesh().vertex_at(vi);
+      if(!vert.is_active())
+        continue;
+
+      if(analysis::vertex_is_boundary(mesh(), vi))
+      {
+        new_pos[vi] = vert.xyz(); // Keep boundary vertices fixed
+        continue;
+      }
+
+      Eigen::Vector3d target_pos = vert.xyz();
+
+      if(type == SmoothingType::Uniform)
+      {
+        // Move towards average of neighbors
+        Eigen::Vector3d sum_neighbors(0, 0, 0);
+        int neighbor_count = 0;
+        auto ring = _m.vertex_ring_at(vi);
+        do
+        {
+          auto nbr_p = ring.half_edge().origin().xyz();
+          sum_neighbors += nbr_p;
+          neighbor_count++;
+        } while(ring.advance());
+
+        assert(neighbor_count > 0);
+        target_pos = sum_neighbors / static_cast<double>(neighbor_count);
+      }
+      else if(type == SmoothingType::Barycenters)
+      {
+        // Weighted average of face centroids
+        Eigen::Vector3d sum_weighted_centroids(0, 0, 0);
+        double weight_sum = 0.0;
+
+        auto ring = _m.vertex_ring_at(vi);
+        do
+        {
+          auto he = ring.half_edge();
+          auto face = he.face();
+
+          if(face.is_equal(mesh().hole()))
+            continue;
+
+          int v1 = he.origin().index();
+          int v2 = he.next().origin().index();
+          int v3 = he.next().next().origin().index();
+          double sizing_at_barycenter =
+              (adaptive_sizing_field[v1] + adaptive_sizing_field[v2] + adaptive_sizing_field[v3]) / 3.0;
+
+          double weight = geometry_cache.face_areas[face.index()] * sizing_at_barycenter;
+          sum_weighted_centroids += weight * geometry_cache.face_barycenters[face.index()];
+          weight_sum += weight;
+        } while(ring.advance());
+
+        if(weight_sum > 1e-8)
+        {
+          target_pos = sum_weighted_centroids / weight_sum;
+        }
+        else
+        {
+          target_pos = vert.xyz(); // Fallback to current position
+        }
+      } // End of barycenters
+
+      // Move vertex towards target position with damping
+      Eigen::Vector3d old_pos = vert.xyz();
+      Eigen::Vector3d move_vec = target_pos - old_pos;
+      Eigen::Vector3d normal = geometry_cache.vertex_normals[vi];
+
+      // Project move_vec onto tangent plane to stop volume changes
+      Eigen::Vector3d tangential_move = move_vec - (move_vec.dot(normal)) * normal;
+      new_pos[vi] = old_pos + LAMBDA_SMOOTHING_DAMPING * tangential_move;
+      needs_update[vi] = true;
+    } // End of vertex loop
+
+    // Apply new positions
+    for(int vi = 0; vi < num_vertices; ++vi)
+    {
+      if(needs_update[vi])
+      {
+        mesh().vertex_at(vi).data().xyz = new_pos[vi];
+      }
+    }
+
+    printf("Total updated vertices in smoothing iteration %d: %i\n",
+        iter + 1,
+        static_cast<int>(std::count(needs_update.begin(), needs_update.end(), true)));
+  } // End smoothing iters
 }
 
 // ============================================================
@@ -715,13 +812,13 @@ Mesh_modifier_uniform_remeshing::should_flip_edge(int he_index)
   int o1_tar = get_vertex_target(o1);
   int o2_tar = get_vertex_target(o2);
 
-  auto sq_err = [](int val, int target) { return (val - target) * (val - target); };
+  auto abs_err = [](int val, int target) { return std::abs(val - target); };
 
   int current_deviation =
-      sq_err(v1_val, v1_tar) + sq_err(v2_val, v2_tar) + sq_err(o1_val, o1_tar) + sq_err(o2_val, o2_tar);
+      abs_err(v1_val, v1_tar) + abs_err(v2_val, v2_tar) + abs_err(o1_val, o1_tar) + abs_err(o2_val, o2_tar);
 
-  int new_deviation =
-      sq_err(v1_val - 1, v1_tar) + sq_err(v2_val - 1, v2_tar) + sq_err(o1_val + 1, o1_tar) + sq_err(o2_val + 1, o2_tar);
+  int new_deviation = abs_err(v1_val - 1, v1_tar) + abs_err(v2_val - 1, v2_tar) + abs_err(o1_val + 1, o1_tar) +
+                      abs_err(o2_val + 1, o2_tar);
 
   // Only flip if it improves total deviation
   return new_deviation < current_deviation;
@@ -748,7 +845,7 @@ Mesh_modifier_uniform_remeshing::is_legal_flip(int he_index)
     return false;
 
   // Check if sides already connected
-  if (get_halfedge_between_vertices(o1, o2) != -1)
+  if(get_halfedge_between_vertices(o1, o2) != -1)
     return false;
 
   // ==========================================
@@ -1009,5 +1106,90 @@ Mesh_modifier_uniform_remeshing::calculate_normal(const Eigen::Vector3d & p0,
   Eigen::Vector3d n = u.cross(v);
   return n.normalized();
 }
+
+Mesh_modifier_uniform_remeshing::GeometryCache
+Mesh_modifier_uniform_remeshing::compute_geometry_cache()
+{
+  GeometryCache cache;
+  const int n_vertices = mesh().n_total_vertices();
+  const int n_faces = mesh().n_total_faces();
+  // Preset all values to zero with memory alloc
+  cache.vertex_normals.resize(n_vertices, Eigen::Vector3d(0.0, 0.0, 0.0));
+  cache.face_areas.resize(n_faces, 0.0);
+  cache.face_barycenters.resize(n_faces, Eigen::Vector3d(0.0, 0.0, 0.0));
+
+  for(int f = 0; f < n_faces; ++f)
+  {
+    auto face = mesh().face_at(f);
+    if(!face.is_active() || face.is_equal(mesh().hole()))
+      continue;
+
+    // Get the three vertices of the face
+    auto he = face.half_edge();
+    auto v1 = he.origin();
+    auto v2 = he.dest();
+    auto v3 = he.next().dest();
+
+    // Compute face normal
+    Eigen::Vector3d p1 = v1.xyz();
+    Eigen::Vector3d p2 = v2.xyz();
+    Eigen::Vector3d p3 = v3.xyz();
+
+    Eigen::Vector3d u = p2 - p1;
+    Eigen::Vector3d v = p3 - p1;
+    Eigen::Vector3d cross_prod = u.cross(v);
+
+    // Compute face area (0.5 * |cross product|)
+    double double_area = cross_prod.norm();
+    cache.face_areas[f] = 0.5 * double_area;
+
+    Eigen::Vector3d face_normal;
+    if(double_area > 1e-12)
+    {
+      face_normal = cross_prod / double_area; // Normalized face normal
+    }
+    else
+    {
+      face_normal = Eigen::Vector3d(0, 0, 1); // Degenerate fallback
+    }
+
+    // Compute face barycenter
+    cache.face_barycenters[f] = (p1 + p2 + p3) / 3.0;
+
+    // Weightings
+    Eigen::Vector3d e12 = (p2 - p1).normalized(); // v1 -> v2
+    Eigen::Vector3d e13 = (p3 - p1).normalized(); // v1 -> v3
+    Eigen::Vector3d e23 = (p3 - p2).normalized(); // v2 -> v3
+    Eigen::Vector3d e21 = -e12; // v2 -> v1
+    Eigen::Vector3d e31 = -e13; // v3 -> v1
+    Eigen::Vector3d e32 = -e23; // v3 -> v2
+
+
+    double dot1 = std::max(-1.0, std::min(1.0, e12.dot(e13)));
+    double angle1 = std::acos(dot1);
+    double dot2 = std::max(-1.0, std::min(1.0, e21.dot(e23)));
+    double angle2 = std::acos(dot2);
+    double dot3 = std::max(-1.0, std::min(1.0, e31.dot(e32)));
+    double angle3 = std::acos(dot3);
+
+    // Add face normal contribution to each vertex normal, weight by angle
+    cache.vertex_normals[v1.index()] += face_normal * angle1;
+    cache.vertex_normals[v2.index()] += face_normal * angle2;
+    cache.vertex_normals[v3.index()] += face_normal * angle3;
+  }
+
+  // Normalize vertex normals
+  for(int v = 0; v < n_vertices; ++v)
+  {
+    if(mesh().vertex_at(v).is_active())
+    {
+      cache.vertex_normals[v].normalize();
+    }
+  }
+
+  return cache;
+}
+
+
 } // end of mohecore
 } // end of minimesh
