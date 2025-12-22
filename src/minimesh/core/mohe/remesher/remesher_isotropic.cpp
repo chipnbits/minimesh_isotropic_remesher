@@ -25,12 +25,14 @@ namespace mohecore
 void
 Mesh_modifier_uniform_remeshing::remesh(double target_edge_length, int iterations)
 {
-  // TODO: Implement the main remeshing loop
-  // For each iteration:
-  //   1. split_long_edges(target_edge_length)
-  //   2. collapse_short_edges(target_edge_length)
-  //   3. flip_edges_to_optimize_valence()
-  //   4. tangential_smoothing()
+  for(int i = 0; i < iterations; ++i)
+  {
+    printf("Remeshing Iteration %d / %d\n", i + 1, iterations);
+    split_long_edges(target_edge_length, 4.0 / 3.0);
+    collapse_short_edges(target_edge_length, 4.0 / 5.0);
+    flip_edges_to_optimize_valence();
+    tangential_smoothing(1);
+  }
 }
 
 // ============================================================
@@ -76,22 +78,58 @@ Mesh_modifier_uniform_remeshing::split_long_edges(double target_length, double a
 void
 Mesh_modifier_uniform_remeshing::collapse_short_edges(double target_length, double beta)
 {
-  // TODO: Implement edge collapsing
-  // Recommended beta = 4.0/5.0 or 0.8
-  // For each edge: if length < beta * target_length AND is_legal_collapse(), collapse
+  double t = target_length * beta;
+  const int initial_he_count = mesh().n_total_half_edges();
+
+  // Make a scratch list for half-edges to mark visted ones
+  std::vector<bool> visited(initial_he_count, false);
+
+  auto he = Mesh_connectivity::Half_edge_iterator();
+  int twin_idx;
+  double length;
+  for(int i = 0; i < initial_he_count; ++i)
+  {
+    he = mesh().half_edge_at(i);
+    twin_idx = he.twin().index();
+    if(visited[i] || visited[twin_idx])
+    {
+      visited[i] = true;
+      visited[twin_idx] = true;
+      continue;
+    }
+    visited[i] = true;
+    visited[twin_idx] = true;
+
+    if(!he.is_active())
+      continue;
+    length = get_edge_length(he.index());
+    printf("Found edge %d of length %f, against threshold %f\n", he.index(), length, t);
+    if(length < t)
+    {
+      collapse_edge(he.index());
+    }
+  }
 }
 
 void
 Mesh_modifier_uniform_remeshing::flip_edges_to_optimize_valence()
 {
-  // TODO: Implement edge flipping
-  // For each edge: if flipping reduces total valence deviation, flip it
+  
 }
 
 void
 Mesh_modifier_uniform_remeshing::tangential_smoothing(int smoothing_iters)
 {
   // TODO: Implement tangential smoothing
+
+  // # optimise vertex positions
+  // for each vertex in vertices :
+  // tangentialRelaxation ( vertex )
+  // # project vertices back onto surface
+  // for each vertex in vertices :
+  // backProjection ( vertex )
+
+
   // For each vertex:
   //   1. Compute barycenter of one-ring neighbors
   //   2. Move vertex towards barycenter
@@ -282,7 +320,10 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index)
 {
   int v1 = mesh().half_edge_at(he_index).origin().index();
   int v2 = mesh().half_edge_at(he_index).dest().index();
-  
+
+  bool v1_boundary = analysis::vertex_is_boundary(_m, v1);
+  bool v2_boundary = analysis::vertex_is_boundary(_m, v2);
+
   if(!is_legal_collapse(v1, v2))
     return false;
 
@@ -292,9 +333,6 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index)
   auto he_v2_v1 = he_v1_v2.twin();
   auto u1_iter = he_v1_v2.next().dest();
   auto u2_iter = he_v2_v1.prev().origin();
-
-  auto face_top = he_v1_v2.face();
-  auto face_bottom = he_v2_v1.face();
 
   auto face_f1 = he_v1_v2.next().twin().face();
   auto face_f2 = he_v2_v1.prev().twin().face();
@@ -310,102 +348,285 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index)
   auto he_s1 = he_v1_v2.next().twin().prev();
   auto he_s2 = he_v2_v1.prev().twin().next();
 
-  Eigen::Vector3d midpoint = 0.5 * (v1_iter.xyz() + v2_iter.xyz());
+  // Determine conditional collapse position (do not move boundary vertices)
+  Eigen::Vector3d new_pos;
+  if (v1_boundary && !v2_boundary) {
+      new_pos = v1_iter.xyz(); // Keep v1 where it is
+  } else if (!v1_boundary && v2_boundary) {
+      new_pos = v2_iter.xyz(); // Snap v1 to v2's position
+  } else {
+      new_pos = v1_iter.xyz() + 0.5 * (v2_iter.xyz() - v1_iter.xyz()); // Midpoint
+  }
 
   // Remap all half-edges originating from v2 to originate from v1
   relabel_vertex(v2, v1);
 
   // Deactivate faces
-  face_top.deactivate();
-  face_bottom.deactivate();
-  // Deactivate 6 half-edges
-  he_v1_v2.next().twin().deactivate();
-  he_v1_v2.next().deactivate();
-  he_v1_v2.deactivate();
-  he_v2_v1.prev().twin().deactivate();
-  he_v2_v1.prev().deactivate();
-  he_v2_v1.deactivate();
-  // Deactivate vertex v2
-  v2_iter.deactivate();
+  auto face_top = he_v1_v2.face();
+  auto face_bottom = he_v2_v1.face();
+  bool top_is_hole = face_top.is_equal(mesh().hole());
+  bool bot_is_hole = face_bottom.is_equal(mesh().hole());
 
-  // Check if this is a degenerate case where face_f1 == face_f2
-  bool is_degenerate = he_s1.is_equal(he_s2);
-
-  if(is_degenerate)
+  // Handle simple case of non-boundary faces
+  if(!top_is_hole && !bot_is_hole)
   {
-    // f1 and f2 the same and s1, s2 the same
-    he_f1_associate.data().prev = he_s1.index();
-    he_s1.data().next = he_f1_associate.index();
 
-    he_f1_associate.data().next = he_f2_associate.index();
-    he_f2_associate.data().prev = he_f1_associate.index();
+    face_top.deactivate();
+    face_bottom.deactivate();
+    // Deactivate 6 half-edges
+    he_v1_v2.next().twin().deactivate();
+    he_v1_v2.next().deactivate();
+    he_v1_v2.deactivate();
+    he_v2_v1.prev().twin().deactivate();
+    he_v2_v1.prev().deactivate();
+    he_v2_v1.deactivate();
+    // Deactivate vertex v2
+    v2_iter.deactivate();
 
-    he_f2_associate.data().next = he_s2.index();
-    he_s2.data().prev = he_f2_associate.index();
+    // Check if this is a degenerate case where face_f1 == face_f2
+    bool is_degenerate = he_s1.is_equal(he_s2);
 
-    he_f1_associate.data().face = face_f1.index();
-    he_f2_associate.data().face = face_f1.index();
-    face_f1.data().half_edge = he_f1_associate.index();
+    if(is_degenerate)
+    {
+      // f1 and f2 the same and s1, s2 the same
+      he_f1_associate.data().prev = he_s1.index();
+      he_s1.data().next = he_f1_associate.index();
 
-    // // Run assertions to ensure connectivity is correct
-    // // Check f1 = f2
-    // assert(face_f1.is_equal(face_f2));
-    // // Check s1 = s2
-    // assert(he_s1.is_equal(he_s2));
-    // // Check that cycle of 3 half-edges is correct and closed
-    // const int he_start_index = he_f1_associate.index();
-    // auto he_iter = he_f1_associate;
-    // do{
-    //   // Print out half edge twin, origin, prev, next, face for debugging
-    //   std::cout << "Half-edge " << he_iter.index() << ": "
-    //             << "twin=" << he_iter.twin().index() << ", "
-    //             << "origin=" << he_iter.origin().index() << ", "
-    //             << "prev=" << he_iter.prev().index() << ", "
-    //             << "next=" << he_iter.next().index() << ", "
-    //             << "face=" << he_iter.face().index() << std::endl;
-    //   assert(he_iter.face().is_equal(face_f1));
-    //   he_iter = he_iter.next();
-    // }
-    // while(he_iter.index() != he_start_index);
+      he_f1_associate.data().next = he_f2_associate.index();
+      he_f2_associate.data().prev = he_f1_associate.index();
+
+      he_f2_associate.data().next = he_s2.index();
+      he_s2.data().prev = he_f2_associate.index();
+
+      he_f1_associate.data().face = face_f1.index();
+      he_f2_associate.data().face = face_f1.index();
+      face_f1.data().half_edge = he_f1_associate.index();
+
+      // // Run assertions to ensure connectivity is correct
+      // // Check f1 = f2
+      // assert(face_f1.is_equal(face_f2));
+      // // Check s1 = s2
+      // assert(he_s1.is_equal(he_s2));
+      // // Check that cycle of 3 half-edges is correct and closed
+      // const int he_start_index = he_f1_associate.index();
+      // auto he_iter = he_f1_associate;
+      // do{
+      //   // Print out half edge twin, origin, prev, next, face for debugging
+      //   std::cout << "Half-edge " << he_iter.index() << ": "
+      //             << "twin=" << he_iter.twin().index() << ", "
+      //             << "origin=" << he_iter.origin().index() << ", "
+      //             << "prev=" << he_iter.prev().index() << ", "
+      //             << "next=" << he_iter.next().index() << ", "
+      //             << "face=" << he_iter.face().index() << std::endl;
+      //   assert(he_iter.face().is_equal(face_f1));
+      //   he_iter = he_iter.next();
+      // }
+      // while(he_iter.index() != he_start_index);
+    }
+    else
+    {
+      // Top edges re-linking
+      he_f1_associate.data().next = he_f1_bottom.index();
+      he_f1_bottom.data().prev = he_f1_associate.index();
+      he_f1_associate.data().prev = he_f1_bottom.next().index();
+      he_f1_bottom.next().data().next = he_f1_associate.index();
+      // Relink face f1
+      he_f1_associate.data().face = face_f1.index();
+      face_f1.data().half_edge = he_f1_associate.index();
+
+      // Bottom edges re-linking
+      he_f2_associate.data().next = he_f2_top.prev().index();
+      he_f2_top.prev().data().prev = he_f2_associate.index();
+      he_f2_associate.data().prev = he_f2_top.index();
+      he_f2_top.data().next = he_f2_associate.index();
+      // Relink face f2
+      he_f2_associate.data().face = face_f2.index();
+      face_f2.data().half_edge = he_f2_associate.index();
+    }
+
+    // Update vertices to point to valid half-edges
+    v1_iter.data().half_edge = he_f1_associate.twin().index();
+    u1_iter.data().half_edge = he_f1_associate.index();
+    u2_iter.data().half_edge = he_f2_associate.twin().index();
   }
-  else
+
+  // ---------------------------------------------------------
+  // CASE 2: Top is Triangle, Bottom is HOLE
+  // ---------------------------------------------------------
+  else if(!top_is_hole && bot_is_hole)
   {
-    // Top edges re-linking
+    face_top.deactivate();
+    
+    // Deactivate top triangle edges (F1)
+    he_v1_v2.next().twin().deactivate();
+    he_v1_v2.next().deactivate();
+    he_v1_v2.deactivate();
+    
+    // Deactivate bottom edge (just the line)
+    he_v2_v1.deactivate();
+    v2_iter.deactivate();
+
+    // --- Top Side: Standard Triangle Removal ---
     he_f1_associate.data().next = he_f1_bottom.index();
     he_f1_bottom.data().prev = he_f1_associate.index();
     he_f1_associate.data().prev = he_f1_bottom.next().index();
     he_f1_bottom.next().data().next = he_f1_associate.index();
-    // Relink face f1
+    
     he_f1_associate.data().face = face_f1.index();
     face_f1.data().half_edge = he_f1_associate.index();
+    
+    // Update u1
+    u1_iter.data().half_edge = he_f1_associate.index();
 
-    // Bottom edges re-linking
+    // --- Bottom Side: Boundary Stitching ---
+    auto prev_he = he_v2_v1.prev();
+    auto next_he = he_v2_v1.next();
+    
+    // Close the loop
+    prev_he.data().next = next_he.index();
+    next_he.data().prev = prev_he.index();
+
+    // v1 needs a valid pointer. he_f1_associate.twin() is a safe interior edge
+    v1_iter.data().half_edge = he_f1_associate.twin().index();
+  }
+
+  // ---------------------------------------------------------
+  // CASE 3: Top is HOLE, Bottom is Triangle
+  // ---------------------------------------------------------
+  else if(top_is_hole && !bot_is_hole)
+  {
+    face_bottom.deactivate();
+
+    // Deactivate top edge (just the line)
+    he_v1_v2.deactivate();
+    
+    // Deactivate bottom triangle edges
+    he_v2_v1.prev().twin().deactivate();
+    he_v2_v1.prev().deactivate();
+    he_v2_v1.deactivate();
+    v2_iter.deactivate();
+
+    // --- Top Side: Boundary Stitching ---
+    auto prev_he = he_v1_v2.prev();
+    auto next_he = he_v1_v2.next();
+    
+    // Close the loop
+    prev_he.data().next = next_he.index();
+    next_he.data().prev = prev_he.index();
+
+    // --- Bottom Side: Standard Triangle Removal ---
     he_f2_associate.data().next = he_f2_top.prev().index();
     he_f2_top.prev().data().prev = he_f2_associate.index();
     he_f2_associate.data().prev = he_f2_top.index();
     he_f2_top.data().next = he_f2_associate.index();
-    // Relink face f2
+
     he_f2_associate.data().face = face_f2.index();
     face_f2.data().half_edge = he_f2_associate.index();
+
+    // Update u2
+    u2_iter.data().half_edge = he_f2_associate.twin().index();
+
+    // v1 needs a valid pointer. Top side is boundary, so pointing to 'next_he' is safe
+    v1_iter.data().half_edge = next_he.index();
+  }
+  
+  // ---------------------------------------------------------
+  // CASE 4: Both are HOLES (Wire Edge / Strut)
+  // ---------------------------------------------------------
+  else 
+  {
+    // Just stitch both boundary loops
+    he_v1_v2.deactivate();
+    he_v2_v1.deactivate();
+    v2_iter.deactivate();
+
+    // Stitch Top
+    auto t_prev = he_v1_v2.prev();
+    auto t_next = he_v1_v2.next();
+    t_prev.data().next = t_next.index();
+    t_next.data().prev = t_prev.index();
+
+    // Stitch Bottom
+    auto b_prev = he_v2_v1.prev();
+    auto b_next = he_v2_v1.next();
+    b_prev.data().next = b_next.index();
+    b_next.data().prev = b_prev.index();
+
+    v1_iter.data().half_edge = t_next.index();
   }
 
-  // Update vertices to point to valid half-edges
-  v1_iter.data().half_edge = he_f1_associate.twin().index();
-  u1_iter.data().half_edge = he_f1_associate.index();
-  u2_iter.data().half_edge = he_f2_associate.twin().index();
-
   // Move vertex v1 to optimal position
-  mesh().vertex_at(v1).data().xyz = midpoint;
+  mesh().vertex_at(v1).data().xyz = new_pos;
   return true;
 }
 
 bool
 Mesh_modifier_uniform_remeshing::flip_edge(int he_index)
 {
-  // TODO: Implement edge flip
-  // Only works for edges shared by two triangles
-  // Return true if successful
-  return false;
+  // HALF-EDGES
+  Mesh_connectivity::Half_edge_iterator he0 = mesh().half_edge_at(he_index);
+  Mesh_connectivity::Half_edge_iterator he1 = he0.twin();
+
+  // meshes on the boundary are not flippable
+  if(he0.face().is_equal(mesh().hole()) || he1.face().is_equal(mesh().hole()))
+  {
+    return false;
+  }
+
+  Mesh_connectivity::Half_edge_iterator he2 = he0.next();
+  Mesh_connectivity::Half_edge_iterator he3 = he2.next();
+  Mesh_connectivity::Half_edge_iterator he4 = he1.next();
+  Mesh_connectivity::Half_edge_iterator he5 = he4.next();
+
+  // VERTICES
+  Mesh_connectivity::Vertex_iterator v0 = he1.origin();
+  Mesh_connectivity::Vertex_iterator v1 = he0.origin();
+  Mesh_connectivity::Vertex_iterator v2 = he3.origin();
+  Mesh_connectivity::Vertex_iterator v3 = he5.origin();
+
+  // FACES
+  Mesh_connectivity::Face_iterator f0 = he0.face();
+  Mesh_connectivity::Face_iterator f1 = he1.face();
+
+  //
+  // Now modify the connectivity
+  //
+
+  // HALF-EDGES
+  he0.data().next = he3.index();
+  he0.data().prev = he4.index();
+  he0.data().origin = v3.index();
+  //
+  he1.data().next = he5.index();
+  he1.data().prev = he2.index();
+  he1.data().origin = v2.index();
+  //
+  he2.data().next = he1.index();
+  he2.data().prev = he5.index();
+  he2.data().face = f1.index();
+  //
+  he3.data().next = he4.index();
+  he3.data().prev = he0.index();
+  //
+  he4.data().next = he0.index();
+  he4.data().prev = he3.index();
+  he4.data().face = f0.index();
+  //
+  he5.data().next = he2.index();
+  he5.data().prev = he1.index();
+
+  // VERTICES
+  v0.data().half_edge = he2.index();
+  v1.data().half_edge = he4.index();
+  v2.data().half_edge = he1.index();
+  v3.data().half_edge = he0.index();
+
+  // FACES
+  f0.data().half_edge = he0.index();
+  f1.data().half_edge = he1.index();
+
+  // operation successful
+  return true;
 }
 
 // ============================================================

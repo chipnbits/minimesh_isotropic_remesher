@@ -42,6 +42,9 @@ public:
   // pointer to the mesh that we are working on.
   Mesh_connectivity & _m;
 
+  int INTERIOR_VALENCE = 6;
+  int BOUNDARY_VALENCE = 4;
+
   // ============================================================
   // Core Remeshing Operations
   // ============================================================

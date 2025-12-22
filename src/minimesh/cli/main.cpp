@@ -157,7 +157,7 @@ main(int argc, char ** argv)
   printf("Total half-edges: %d \n", mesh.n_active_half_edges());
 
   mohecore::Mesh_modifier_uniform_remeshing remesher(mesh);
-  remesher.collapse_edge(6); // Collapse edge with half-edge index 0
+  remesher.collapse_edge(1); // Collapse edge with half-edge index 0
 
   printf("Total vertices: %d \n", mesh.n_active_vertices());
   printf("Total faces: %d \n", mesh.n_active_faces());
