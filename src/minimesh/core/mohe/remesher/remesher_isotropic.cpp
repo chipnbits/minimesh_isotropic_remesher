@@ -70,7 +70,7 @@ Mesh_modifier_uniform_remeshing::split_long_edges(double target_length, double a
     printf("Found edge %d of length %f, against threshold %f\n", he.index(), length, t);
     if(length > t)
     {
-      split_edge(he.index(), 0.5); // Split at midpoint
+      split_edge(he.index(), 0.5);
     }
   }
 }
@@ -106,7 +106,7 @@ Mesh_modifier_uniform_remeshing::collapse_short_edges(double target_length, doub
     printf("Found edge %d of length %f, against threshold %f\n", he.index(), length, t);
     if(length < t)
     {
-      collapse_edge(he.index());
+      collapse_edge(he.index(), t);
     }
   }
 }
@@ -316,7 +316,7 @@ Mesh_modifier_uniform_remeshing::split_edge(int he_index, double weight)
 }
 
 bool
-Mesh_modifier_uniform_remeshing::collapse_edge(int he_index)
+Mesh_modifier_uniform_remeshing::collapse_edge(int he_index, double threshold)
 {
   int v1 = mesh().half_edge_at(he_index).origin().index();
   int v2 = mesh().half_edge_at(he_index).dest().index();
@@ -324,7 +324,7 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index)
   bool v1_boundary = analysis::vertex_is_boundary(_m, v1);
   bool v2_boundary = analysis::vertex_is_boundary(_m, v2);
 
-  if(!is_legal_collapse(v1, v2))
+  if(!is_legal_collapse(v1, v2, threshold))
     return false;
 
   auto v1_iter = mesh().vertex_at(v1);
@@ -355,7 +355,7 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index)
   } else if (!v1_boundary && v2_boundary) {
       new_pos = v2_iter.xyz(); // Snap v1 to v2's position
   } else {
-      new_pos = v1_iter.xyz() + 0.5 * (v2_iter.xyz() - v1_iter.xyz()); // Midpoint
+      new_pos = 0.5 * (v2_iter.xyz() + v1_iter.xyz()); // Midpoint
   }
 
   // Remap all half-edges originating from v2 to originate from v1
@@ -658,12 +658,12 @@ Mesh_modifier_uniform_remeshing::get_valence_deviation(int v_index) const
   int valence = get_vertex_valence(v_index);
   bool is_boundary = analysis::vertex_is_boundary(_m, v_index);
 
-  int ideal_valence = is_boundary ? 4 : 6;
+  int ideal_valence = is_boundary ? BOUNDARY_VALENCE : INTERIOR_VALENCE;
   return std::abs(valence - ideal_valence);
 }
 
 bool
-Mesh_modifier_uniform_remeshing::is_legal_collapse(int v1, int v2)
+Mesh_modifier_uniform_remeshing::is_legal_collapse(int v1, int v2, double threshold)
 {
 
   // Check for boundary conditions
@@ -674,14 +674,10 @@ Mesh_modifier_uniform_remeshing::is_legal_collapse(int v1, int v2)
 
   bool he_face_is_hole = he.face().is_equal(mesh().hole());
   bool tw_face_is_hole = twin.face().is_equal(mesh().hole());
-
   bool edge_is_boundary = (he_face_is_hole || tw_face_is_hole);
 
   // Boundary edge rule, do not collapse interior edge connecting two boundary vertices
-  if(v1_boundary && v2_boundary && !edge_is_boundary)
-  {
-    return false;
-  }
+  if(v1_boundary && v2_boundary && !edge_is_boundary) return false;
 
   // Gather neighbors (excluding each other)
   std::set<int> n1 = get_all_neighbors_from_vertex(v1);
@@ -691,23 +687,14 @@ Mesh_modifier_uniform_remeshing::is_legal_collapse(int v1, int v2)
 
   // Opposite vertices across edge (the two triangle tips)
   std::set<int> allowed;
-  // If the main face is NOT a hole, u1 exists
-  if(!he_face_is_hole)
-  {
-    int u1 = he.next().dest().index();
-    allowed.insert(u1);
-  }
-
-  // If the twin face is NOT a hole, u2 exists
-  if(!tw_face_is_hole)
-  {
-    int u2 = twin.next().dest().index();
-    allowed.insert(u2);
-  }
+  if(!he_face_is_hole) allowed.insert(he.next().dest().index());
+  if(!tw_face_is_hole) allowed.insert(twin.next().dest().index());
+  
 
   // Common neighbors
   std::set<int> common;
-  std::set_intersection(n1.begin(), n1.end(), n2.begin(), n2.end(), std::inserter(common, common.begin()));
+  std::set_intersection(n1.begin(), n1.end(), n2.begin(), n2.end(), 
+                        std::inserter(common, common.begin()));
 
   // Fail Condition A: the only common neighbors are u1 and u2 (link condition)
   std::set<int> common_minus_allowed;
@@ -724,6 +711,127 @@ Mesh_modifier_uniform_remeshing::is_legal_collapse(int v1, int v2)
   std::set_symmetric_difference(n1.begin(), n1.end(), n2.begin(), n2.end(), std::inserter(symdiff, symdiff.begin()));
   if(symdiff.empty())
     return false;
+
+  // ==========================================
+  // 2. GEOMETRIC CHECKS (Botsch et al. 2010 Requirements)
+  // ==========================================
+  
+  // Calculate the collapse point (usually the midpoint)
+  auto p1 = mesh().vertex_at(v1).xyz();
+  auto p2 = mesh().vertex_at(v2).xyz();
+  Eigen::Vector3d p_new;
+  if (v1_boundary && !v2_boundary) {
+      p_new = p1; // Keep v1 where it is
+  } else if (!v1_boundary && v2_boundary) {
+      p_new = p2; // Snap v1 to v2's position
+  } else {
+      p_new = 0.5 * (p1 + p2); // Midpoint
+  }
+
+  // --- Requirement A: Edge Length Check ---
+  // Note: 'n1' and 'n2' currently hold neighbors excluding v1/v2.
+  
+  // Combine all unique neighbors
+  std::set<int> all_neighbors = n1;
+  all_neighbors.insert(n2.begin(), n2.end());
+
+  double threshold_sq = threshold * threshold;
+
+  for (int nid : all_neighbors) {
+      auto p_neighbor = mesh().vertex_at(nid).xyz();
+      if ((p_neighbor - p_new).squaredNorm() > threshold_sq) {
+          return false; // Resulting edge would be too long
+      }
+  }
+
+  // --- Requirement B: Intersection/Flip Check ---
+  // TODO: Implement intersection/flip check
+  // Helper lambda to check faces around a vertex
+  // auto check_surface_normals = [&](int v_idx) -> bool {
+  //     auto start_he = mesh().half_edge_at(v_idx); // outgoing HE
+  //     auto curr_he = start_he;
+      
+  //     do {
+  //         if (!curr_he.face().is_equal(mesh().hole())) {
+  //             // Get the other two vertices of this triangle
+  //             int uA = curr_he.dest().index();
+  //             int uB = curr_he.next().dest().index();
+
+  //             // If this face includes the edge (v1, v2), it will vanish, so ignore it
+  //             if (uA != v2 && uB != v2 && uA != v1 && uB != v1) {
+                  
+  //                 // Current Normal
+  //                 auto n_old = mesh().face_normal(curr_he.face());
+                  
+  //                 // Simulated New Normal using p_new
+  //                 auto pA = mesh().position(uA);
+  //                 auto pB = mesh().position(uB);
+  //                 // Calculate normal of triangle (p_new, pA, pB)
+  //                 // Use your cross product helper here
+  //                 auto n_new = calculate_normal(p_new, pA, pB); 
+
+  //                 // Dot product checks the angle change
+  //                 // If < 0, it flipped more than 90 degrees (inverted)
+  //                 // Botsch usually suggests a stricter threshold, e.g., 0.2 or 0.5
+  //                 if (n_old.dot(n_new) < 0.2) { 
+  //                     return false; // Face flipped or distorted too much
+  //                 }
+  //             }
+  //         }
+  //         // Move to next outgoing halfedge around vertex
+  //         curr_he = curr_he.twin().next(); 
+  //     } while (curr_he.index() != start_he.index());
+      
+  //     return true;
+  // };
+
+  // if (!check_surface_normals(v1)) return false;
+  // if (!check_surface_normals(v2)) return false;
+
+  return true;
+}
+
+bool 
+Mesh_modifier_uniform_remeshing::is_legal_flip(int he_index)
+{
+  auto he = mesh().half_edge_at(he_index);
+  auto twin = he.twin();
+  int v1 = he.origin().index();
+  int v2 = twin.origin().index();
+
+  // Boundary edge is no flip
+  if (he.face().is_equal(mesh().hole()) || twin.face().is_equal(mesh().hole())) return false;
+
+  // o1, o2 are the opposite vertices
+  int o1 = he.next().dest().index();
+  int o2 = twin.next().dest().index();
+
+  if (o1 == o2) return false;
+
+
+  // ==========================================
+  // 2. GEOMETRIC CHECKS (Convexity & Self-Intersection)
+  // ==========================================
+  
+  // We need to compare the normals of the CURRENT triangles 
+  // with the normals of the PROPOSED triangles to check for flip indicating 
+  // concavity or self-intersection.
+
+  auto p_v1 = mesh().vertex_at(v1).xyz();
+  auto p_v2 = mesh().vertex_at(v2).xyz();
+  auto p_o1 = mesh().vertex_at(o1).xyz();
+  auto p_o2 = mesh().vertex_at(o2).xyz();
+
+  auto n_curr_1 = (p_v2-p_v1).cross(p_o1-p_v1).normalized();
+  auto n_curr_2 = (p_v1-p_v2).cross(p_o2-p_v2).normalized();
+
+  auto n_new_A = (p_v1 - p_o1).cross(p_o2 - p_o1).normalized();
+  auto n_new_B = (p_v2 - p_o2).cross(p_o1 - p_o2).normalized();
+  
+  double min_dot = 0.5; // TODO: add as parameter globally
+  
+  if (n_new_A.dot(n_curr_1) < min_dot) return false;
+  if (n_new_B.dot(n_curr_2) < min_dot) return false;
 
   return true;
 }
@@ -810,5 +918,15 @@ Mesh_modifier_uniform_remeshing::compute_barycenter(int v_index) const
   return barycenter;
 }
 
+Eigen::Vector3d
+Mesh_modifier_uniform_remeshing::calculate_normal(const Eigen::Vector3d& p0,
+                                                  const Eigen::Vector3d& p1,
+                                                  const Eigen::Vector3d& p2) const
+{
+  Eigen::Vector3d u = p1 - p0;
+  Eigen::Vector3d v = p2 - p0;
+  Eigen::Vector3d n = u.cross(v);
+  return n.normalized();
+}
 } // end of mohecore
 } // end of minimesh

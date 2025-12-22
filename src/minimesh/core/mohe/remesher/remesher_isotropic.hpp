@@ -85,7 +85,7 @@ public:
 
   // Collapses the edge defined by he_index (collapses origin into destination).
   // Returns true if successful.
-  bool collapse_edge(int he_index);
+  bool collapse_edge(int he_index, double threshold);
 
   // Flips the edge shared by the two triangles adjacent to he_index.
   // Returns true if successful.
@@ -105,9 +105,12 @@ public:
   // Used by flip_edges_to_optimize_valence
   int get_valence_deviation(int v_index) const;
 
-  // Topology check from your existing code.
-  // Ensures the collapse won't result in non-manifold geometry.
-  bool is_legal_collapse(int v1, int v2);
+  // Checks edge collapse legality according to Botsch & Kobbelt criteri and length threshold
+  bool is_legal_collapse(int v1, int v2, double threshold);
+
+  // Check edge flip legality according to Botsch & Kobbelt criteria
+  bool is_legal_flip(int he_index);
+
 
   // Helper to get all neighbors of a vertex as a set (for collapse legality checks)
   std::set<int> get_all_neighbors_from_vertex(int v_index) const;
@@ -123,6 +126,12 @@ public:
 
   // Computes the centroid of the one-ring neighbors
   Eigen::Vector3d compute_barycenter(int v_index) const;
+
+  // Compute a surface normal given three points
+  Eigen::Vector3d calculate_normal(const Eigen::Vector3d& p0,
+                                  const Eigen::Vector3d& p1,
+                                  const Eigen::Vector3d& p2) const;
+                                
 };
 
 } // end of mohecore
