@@ -1113,10 +1113,12 @@ Mesh_modifier_uniform_remeshing::compute_geometry_cache()
   GeometryCache cache;
   const int n_vertices = mesh().n_total_vertices();
   const int n_faces = mesh().n_total_faces();
+  const int n_half_edges = mesh().n_total_half_edges();
   // Preset all values to zero with memory alloc
   cache.vertex_normals.resize(n_vertices, Eigen::Vector3d(0.0, 0.0, 0.0));
   cache.face_areas.resize(n_faces, 0.0);
   cache.face_barycenters.resize(n_faces, Eigen::Vector3d(0.0, 0.0, 0.0));
+  cache.half_edge_angles.resize(n_half_edges, 0.0);
 
   for(int f = 0; f < n_faces; ++f)
   {
@@ -1124,11 +1126,15 @@ Mesh_modifier_uniform_remeshing::compute_geometry_cache()
     if(!face.is_active() || face.is_equal(mesh().hole()))
       continue;
 
-    // Get the three vertices of the face
-    auto he = face.half_edge();
-    auto v1 = he.origin();
-    auto v2 = he.dest();
-    auto v3 = he.next().dest();
+    // Get the three half edges and vertices of the triangle
+    auto he1 = face.half_edge();
+    auto he2 = he1.next();
+    auto he3 = he2.next();
+    auto v1 = he1.origin();
+    auto v2 = he2.origin();
+    auto v3 = he3.origin();
+    // Cycle v1 -> v2 -> v3 -> v1 half edges: he1, he2, he3
+
 
     // Compute face normal
     Eigen::Vector3d p1 = v1.xyz();
@@ -1156,7 +1162,7 @@ Mesh_modifier_uniform_remeshing::compute_geometry_cache()
     // Compute face barycenter
     cache.face_barycenters[f] = (p1 + p2 + p3) / 3.0;
 
-    // Weightings
+    // Angle computations
     Eigen::Vector3d e12 = (p2 - p1).normalized(); // v1 -> v2
     Eigen::Vector3d e13 = (p3 - p1).normalized(); // v1 -> v3
     Eigen::Vector3d e23 = (p3 - p2).normalized(); // v2 -> v3
@@ -1167,10 +1173,15 @@ Mesh_modifier_uniform_remeshing::compute_geometry_cache()
 
     double dot1 = std::max(-1.0, std::min(1.0, e12.dot(e13)));
     double angle1 = std::acos(dot1);
-    double dot2 = std::max(-1.0, std::min(1.0, e21.dot(e23)));
+    double dot2 = std::max(-1.0, std::min(1.0, e23.dot(e21)));
     double angle2 = std::acos(dot2);
     double dot3 = std::max(-1.0, std::min(1.0, e31.dot(e32)));
     double angle3 = std::acos(dot3);
+
+    // Store half-edge angles
+    cache.half_edge_angles[he1.index()] = angle1;
+    cache.half_edge_angles[he2.index()] = angle2;
+    cache.half_edge_angles[he3.index()] = angle3;
 
     // Add face normal contribution to each vertex normal, weight by angle
     cache.vertex_normals[v1.index()] += face_normal * angle1;

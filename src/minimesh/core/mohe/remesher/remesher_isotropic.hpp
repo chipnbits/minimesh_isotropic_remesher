@@ -32,9 +32,14 @@ public:
 
   struct GeometryCache
   {
+    // Indexed by vertex index
     std::vector<Eigen::Vector3d> vertex_normals;
+    // Indexed by face index
     std::vector<Eigen::Vector3d> face_barycenters;
+    // Indexed by face index
     std::vector<double> face_areas;
+    // Indexed by half-edge index originating from corner
+    std::vector<double> half_edge_angles;
   };
 
   // Get the underlying mesh
