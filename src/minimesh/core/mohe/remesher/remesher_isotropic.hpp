@@ -44,6 +44,7 @@ public:
 
   int INTERIOR_VALENCE = 6;
   int BOUNDARY_VALENCE = 4;
+  double EDGE_FLIP_THRESHOLD_DOT = 0.5; // Cosine of angle threshold for normal deviation check
 
   // ============================================================
   // Core Remeshing Operations
@@ -90,7 +91,6 @@ public:
   // Flips the edge shared by the two triangles adjacent to he_index.
   // Returns true if successful.
   bool flip_edge(int he_index);
-
   // ============================================================
   // Helpers & Topology Checks
   // ============================================================
@@ -104,6 +104,8 @@ public:
   // Calculates the deviation of valence from ideal (6 for internal, 4 for boundary)
   // Used by flip_edges_to_optimize_valence
   int get_valence_deviation(int v_index) const;
+
+  bool should_flip_edge(int he_index);
 
   // Checks edge collapse legality according to Botsch & Kobbelt criteri and length threshold
   bool is_legal_collapse(int v1, int v2, double threshold);

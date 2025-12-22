@@ -157,19 +157,8 @@ main(int argc, char ** argv)
   printf("Total half-edges: %d \n", mesh.n_active_half_edges());
 
   mohecore::Mesh_modifier_uniform_remeshing remesher(mesh);
-  remesher.collapse_edge(1, 1e6); // Collapse edge with half-edge index 0
 
-  printf("Total vertices: %d \n", mesh.n_active_vertices());
-  printf("Total faces: %d \n", mesh.n_active_faces());
-  printf("Total half-edges: %d \n", mesh.n_active_half_edges());
-
-  for(int i = 0; i < mesh.n_total_faces(); ++i)
-  {
-    auto f = mesh.face_at(i);
-    if(!f.is_active())
-      continue;
-    printf("Face %d: half-edge %d\n", f.index(), f.data().half_edge);
-  }
+  remesher.remesh(0.02,7); // Target edge length 0.5, 1 iteration
 
   // Reuse the same filename but to export the result (take only filename without path or .obj)
   std::string mesh_out_path = filename.substr(filename.find_last_of("/\\") + 1);
