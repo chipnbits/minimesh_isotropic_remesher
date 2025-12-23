@@ -22,6 +22,8 @@ public:
   Mesh_modifier_uniform_remeshing(Mesh_connectivity & mesh_in)
   : _m(mesh_in)
   {
+    // run initialization
+    initialize();
   }
 
   enum class SmoothingType
@@ -54,6 +56,13 @@ public:
   Mesh_connectivity & mesh() { return _m; }
   const Mesh_connectivity & mesh() const { return _m; }
 
+  // Initialize the remesher - marks feature edges and vertices
+  void initialize();
+
+  // Getters for feature lists
+  const std::vector<bool>& get_feature_edges() const { return _is_feature_edge; }
+  const std::vector<VertexFeatureType>& get_vertex_feature_types() const { return _vertex_feature_type; }
+
   //
   // Main Entry Point
   // Executes the iterative remeshing algorithm described by
@@ -76,7 +85,7 @@ public:
   const int N_SMOOTHING_ITERS = 5; // Number of smoothing iterations
 
   // Feature edges
-  const double FEATURE_ANGLE_DEGREES = 30.0; // Degrees
+  const double FEATURE_ANGLE_DEGREES = 60.0; // Degrees
   const double FEATURE_ANGLE_COSINE = cos(FEATURE_ANGLE_DEGREES * M_PI / 180.0);
 
   // edge collapse checks
@@ -173,6 +182,10 @@ public:
   // Precompute geometry information for the current mesh state
   GeometryCache compute_geometry_cache();
 
+  // Classify vertices based on incident feature edges, assumes feature edges are marked
+  VertexFeatureType classify_vertex_feature_type(int v_index);
+
+  // initialize feature edges and vertices
   void mark_feature_edges_and_vertices();
 };
 } // end of mohecore

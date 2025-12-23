@@ -20,6 +20,26 @@ namespace mohecore
 {
 
 // ============================================================
+// Initialization
+// ============================================================
+
+void
+Mesh_modifier_uniform_remeshing::initialize()
+{
+  // Mark feature edges and vertices on initialization
+  printf("Marking feature edges and vertices...\n");
+  mark_feature_edges_and_vertices();
+
+  int total_feature_edges = 0;
+  for(bool is_feature : _is_feature_edge)
+  {
+    if(is_feature)
+      total_feature_edges++;
+  }
+  printf("Total feature edges marked: %d\n", total_feature_edges);
+}
+
+// ============================================================
 // Main Entry Point
 // ============================================================
 
@@ -28,11 +48,6 @@ Mesh_modifier_uniform_remeshing::remesh(double target_edge_length, int iteration
 {
   // Start time
   auto start_time = std::chrono::high_resolution_clock::now();
-
-  // Build feature edge and vertex lists
-  printf("Marking feature edges and vertices...\n");
-  mark_feature_edges_and_vertices();
-
   for(int i = 0; i < iterations; ++i)
   {
     printf("Remeshing Iteration %d / %d\n", i + 1, iterations);
@@ -1194,11 +1209,51 @@ void
 Mesh_modifier_uniform_remeshing::mark_feature_edges_and_vertices()
 {
   // Precompute all the face normals
-  auto mesh_geom_cache = compute_geometry_cache();
+  std::vector<Eigen::Vector3d> face_normals(mesh().n_total_faces(), Eigen::Vector3d(0.0, 0.0, 0.0));
+  for(int f = 0; f < mesh().n_total_faces(); ++f)
+  {
+    auto face = mesh().face_at(f);
+    if(!face.is_active() || face.is_equal(mesh().hole()))
+      continue;
+
+    // Get the three half edges and vertices of the triangle
+    auto he1 = face.half_edge();
+    auto he2 = he1.next();
+    auto he3 = he2.next();
+    auto v1 = he1.origin();
+    auto v2 = he2.origin();
+    auto v3 = he3.origin();
+    // Cycle v1 -> v2 -> v3 -> v1 half edges: he1, he2, he3
+
+    // Compute face normal
+    Eigen::Vector3d p1 = v1.xyz();
+    Eigen::Vector3d p2 = v2.xyz();
+    Eigen::Vector3d p3 = v3.xyz();
+
+    Eigen::Vector3d u = p2 - p1;
+    Eigen::Vector3d v = p3 - p1;
+    Eigen::Vector3d cross_prod = u.cross(v);
+
+    double area_double = cross_prod.norm();
+    if(area_double > 1e-12)
+    {
+      face_normals[f] = cross_prod / area_double; // Normalized face normal
+    }
+    else
+    {
+      face_normals[f] = Eigen::Vector3d(0, 0, 1); // Degenerate fallback
+    }
+  }
+  
 
   const int n_half_edges = mesh().n_total_half_edges();
   const int n_vertices = mesh().n_total_vertices();
   const double cos_feature_angle_rad = std::cos(FEATURE_ANGLE_DEGREES * (M_PI / 180.0));
+
+  printf("Marking feature edges with angle threshold: %f degrees (cosine: %f)\n",
+      FEATURE_ANGLE_DEGREES,
+      cos_feature_angle_rad);
+  printf("Total half-edges: %d, vertices: %d\n", n_half_edges, n_vertices);
 
   _is_feature_edge.assign(n_half_edges, false);
   _vertex_feature_type.assign(n_vertices, SIMPLE);
@@ -1227,7 +1282,7 @@ Mesh_modifier_uniform_remeshing::mark_feature_edges_and_vertices()
     else
     {
       // Both faces are valid, check angle between normals
-      double cos_beta = std::abs(mesh_geom_cache.vertex_normals[f1].dot(mesh_geom_cache.vertex_normals[f2]));
+      double cos_beta = face_normals[f1].dot(face_normals[f2]);
       if(cos_beta < cos_feature_angle_rad)
       {
         // Mark as feature edge if angle exceeds threshold
@@ -1242,7 +1297,14 @@ Mesh_modifier_uniform_remeshing::mark_feature_edges_and_vertices()
   {
     if (!mesh().vertex_at(v_idx).is_active())
       continue; // Skip inactive vertices
+    _vertex_feature_type[v_idx] = classify_vertex_feature_type(v_idx);
+  }
+  return;
+}
 
+Mesh_modifier_uniform_remeshing::VertexFeatureType
+Mesh_modifier_uniform_remeshing::classify_vertex_feature_type(int v_idx)
+{
     // Count incoming feature edges
     auto ring = _m.vertex_ring_at(v_idx);
     int feature_edge_count = 0;
@@ -1254,23 +1316,25 @@ Mesh_modifier_uniform_remeshing::mark_feature_edges_and_vertices()
 
     if(feature_edge_count == 0)
     {
-      _vertex_feature_type[v_idx] = SIMPLE;
+      return SIMPLE;
     }
     else if(feature_edge_count == 1)
     {
-      _vertex_feature_type[v_idx] = CORNER;
+      return CORNER;
     }
     else if(feature_edge_count == 2)
     {
-      _vertex_feature_type[v_idx] = EDGE;
+      return EDGE;
     }
     else
     {
-      _vertex_feature_type[v_idx] = CORNER;
+      return CORNER;
     }
-  }
-  return;
 }
+
+
+
+
 
 } // end of mohecore
 } // end of minimesh
