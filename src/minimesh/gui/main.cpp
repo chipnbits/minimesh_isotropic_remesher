@@ -487,22 +487,75 @@ update_anchor_visualization()
   globalvars::viewer.get_mesh_buffer().set_colorful_spheres(sphere_indices, sphere_colors);
 }
 
+Eigen::Matrix4Xf
+angles_to_colors(const std::vector<double>& face_min_angles_radians,
+                 mohecore::Mesh_connectivity& mesh,
+                 const mohecore::Mesh_connectivity::Defragmentation_maps& defrag)
+{
+  int n_active_faces = mesh.n_active_faces();
+  Eigen::Matrix4Xf colors(4, n_active_faces);
+
+  // Tuning params
+  constexpr double clamp_deg = 57.0;  
+  constexpr float  power     = 3.0f;  
+
+  for(int fid = 0; fid < mesh.n_total_faces(); ++fid)
+  {
+    if(!mesh.face_at(fid).is_active())
+      continue;
+
+    int active_face_idx = defrag.old2new_faces[fid];
+
+    // Convert radians to degrees
+    double angle_deg = face_min_angles_radians[fid] * 180.0 / M_PI;
+
+    Eigen::Vector3f red(1.0f, 0.0f, 0.0f);
+    Eigen::Vector3f gray(0.5f, 0.5f, 0.5f);
+
+    Eigen::Vector3f rgb;
+
+    if(angle_deg >= clamp_deg)
+    {
+      // Hard clamp to gray for angles in [58°, 60°] (and above, if any)
+      rgb = gray;
+    }
+    else
+    {
+      // Map [0°, clamp_deg] -> s in [0, 1]
+      float s = static_cast<float>(angle_deg / clamp_deg);
+      s = std::min(1.0f, std::max(0.0f, s));
+
+
+      float t = std::pow(s, 1/power);  
+
+      // Interpolate red -> gray
+      rgb = (1.0f - t) * red + t * gray;
+    }
+
+    // Alpha stays opaque
+    colors.col(active_face_idx) = Eigen::Vector4f(rgb.x(), rgb.y(), rgb.z(), 1.0f);
+  }
+
+  return colors;
+}
+
 void
 update_remesh_feature_visualization()
 {
   // Clear visualization if remesh mode is off
   if(!globalvars::remesh_mode)
   {
-    // Reset all vertices to default gray
-    int n_active_verts = globalvars::mesh.n_active_vertices();
-    Eigen::Matrix4Xf vertex_colors(4, n_active_verts);
-    vertex_colors.setConstant(0.7f);
-    globalvars::viewer.get_mesh_buffer().set_vertex_colors(vertex_colors);
-
     // Clear spheres
     Eigen::VectorXi empty_indices(0);
     Eigen::Matrix4Xf empty_colors(4, 0);
     globalvars::viewer.get_mesh_buffer().set_colorful_spheres(empty_indices, empty_colors);
+
+    // Clear face colors (reset to default)
+    int n_active_faces = globalvars::mesh.n_active_faces();
+    Eigen::Matrix4Xf face_colors(4, n_active_faces);
+    face_colors.setConstant(0.0f); // Transparent/default
+    globalvars::viewer.get_mesh_buffer().set_face_colors(face_colors);
+
     return;
   }
 
@@ -510,17 +563,12 @@ update_remesh_feature_visualization()
   mohecore::Mesh_connectivity::Defragmentation_maps defrag;
   globalvars::mesh.compute_defragmention_maps(defrag);
 
-  // Prepare vertex colors (default to gray)
-  int n_active_verts = globalvars::mesh.n_active_vertices();
-  Eigen::Matrix4Xf vertex_colors(4, n_active_verts);
-  vertex_colors.setConstant(0.7f); // Default: gray
-  vertex_colors.row(3).setConstant(1.0f); // Alpha channel
-
   // Get feature edge and vertex type vectors from remesher via getters
   const std::vector<mohecore::Mesh_modifier_uniform_remeshing::VertexFeatureType>& vertex_feature_type =
       globalvars::modi_remesh.get_vertex_feature_types();
 
-  // Color feature vertices with light blue
+  // Collect feature vertices for sphere visualization
+  std::vector<int> feature_vertex_indices;
   for(int v_idx = 0; v_idx < globalvars::mesh.n_total_vertices(); ++v_idx)
   {
     auto vert = globalvars::mesh.vertex_at(v_idx);
@@ -536,18 +584,37 @@ update_remesh_feature_visualization()
     {
       // Get the defragmented index for this vertex
       int active_idx = defrag.old2new_vertices[v_idx];
-      // Light blue color (R=0.3, G=0.6, B=1.0, A=1)
-      vertex_colors.col(active_idx) << 0.3f, 0.6f, 1.0f, 1.0f;
+      feature_vertex_indices.push_back(active_idx);
     }
   }
 
-  // Apply vertex colors to mesh buffer
-  globalvars::viewer.get_mesh_buffer().set_vertex_colors(vertex_colors);
+  // Apply min angle visualization to faces
+  const std::vector<double>& min_angles = globalvars::modi_remesh.get_face_min_angles();
+  Eigen::Matrix4Xf face_colors = angles_to_colors(min_angles, globalvars::mesh, defrag);
+  globalvars::viewer.get_mesh_buffer().set_face_colors(face_colors);
 
-  // Clear spheres since we're using vertex colors instead
-  Eigen::VectorXi empty_indices(0);
-  Eigen::Matrix4Xf empty_colors(4, 0);
-  globalvars::viewer.get_mesh_buffer().set_colorful_spheres(empty_indices, empty_colors);
+  // Draw spheres on feature vertices (light blue)
+  if(!feature_vertex_indices.empty())
+  {
+    Eigen::VectorXi sphere_indices(feature_vertex_indices.size());
+    Eigen::Matrix4Xf sphere_colors(4, feature_vertex_indices.size());
+
+    for(size_t i = 0; i < feature_vertex_indices.size(); ++i)
+    {
+      sphere_indices[i] = feature_vertex_indices[i];
+      // Light blue color (R=0.3, G=0.6, B=1.0, A=1)
+      sphere_colors.col(i) << 0.3f, 0.6f, 1.0f, 1.0f;
+    }
+
+    globalvars::viewer.get_mesh_buffer().set_colorful_spheres(sphere_indices, sphere_colors);
+  }
+  else
+  {
+    // Clear spheres if no feature vertices
+    Eigen::VectorXi empty_indices(0);
+    Eigen::Matrix4Xf empty_colors(4, 0);
+    globalvars::viewer.get_mesh_buffer().set_colorful_spheres(empty_indices, empty_colors);
+  }
 }
 
 void
@@ -616,6 +683,9 @@ remesh_single_pass_pressed(int)
 
   printf("Single remeshing pass completed\n");
 
+  // Compute face minimal angles for quality visualization
+  globalvars::modi_remesh.compute_face_min_angles();
+
   // Rebuild the viewer with the modified mesh
   mohecore::Mesh_connectivity::Defragmentation_maps defrag;
   globalvars::mesh.compute_defragmention_maps(defrag);
@@ -628,11 +698,8 @@ remesh_single_pass_pressed(int)
     globalvars::deformed_vertex_positions.col(i) = globalvars::mesh.vertex_at(i).xyz();
   }
 
-  // If remesh mode is enabled, update visualization with current feature lists
-  if(globalvars::remesh_mode)
-  {
-    update_remesh_feature_visualization();
-  }
+  // Update visualization (handles both feature vertices and min angle coloring based on remesh_mode)
+  update_remesh_feature_visualization();
 
   glutPostRedisplay();
 }
@@ -781,6 +848,9 @@ main(int argc, char * argv[])
   // Setup background modifiers
   globalvars::modi_edge.initialize();
   globalvars::modi_remesh.initialize(); // Re-initialize after mesh is loaded
+
+  // Compute initial quality data (visualization will be applied when remesh mode is enabled)
+  globalvars::modi_remesh.compute_face_min_angles();
 
   //
   // Add radio buttons to see which mesh components to view

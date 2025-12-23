@@ -281,7 +281,7 @@ void Mesh_viewer::draw()
 
 	// Draw the spheres
 	{
-		glPointSize(3); gl_check_error();
+		glPointSize(10); gl_check_error();  // Increased size for better visibility
 		for(int i = 0; i < (int)_mesh_buffer.spheres_vertex_indices.size(); ++i)
 		{
 			Eigen::Vector3f vv = _mesh_buffer.vertices.col(_mesh_buffer.spheres_vertex_indices(i));
