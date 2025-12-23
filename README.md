@@ -1,28 +1,35 @@
-# 2D Mesh Parameterization 
+# 3D Mesh Uniform Isotropic Remeshing
 
 **Author:** Simon Ghyselincks
 **Student Number:** 12145124
 
-## Overview
+## Overview Summary
 
-This project implements mesh parameterization. Two algorithms are provided:
-1. Fixed Boundary Parameterization using cotangent weights.
-2. Least Squares Conformal Maps (LSCM).
+This project implements a uniform isotropic remeshing algorithm for 3D meshes based upon a synthesis of techniques described by Botsch and Kobbelt (2004) and Tanja Munz (2015). The remeshing is a parameterization-free approach that relies solely upon local mesh operations to iteratively adjust a mesh towards a targeted edge length with desirable isotropic properties, while preserving important features.
 
-The easiest way to get started is through the GUI, wich has radio buttons to select the desired algorithm and initiate the parameterization process. The CLI version runs the same parameterization with save to file.
-## Running the Applications
+### Operation of Remesher
+The remeshing algorithm can be viewed and operated either through the GUI application or the CLI application included in the MiniMesh framework. The GUI contains new radio buttons to toggle the remeshing mode to `on`. When activated, the important feature edges are identified with blue highlights, and a target edge length can be set in the numerical field. The remeshing is done iteratively, pressing the `Run Single Pass` button with the desired target edge length.
 
-The CLI and GUI can be run using the following aliased commands:
+In the CLI application, the remesher is set up to iteratively remesh towards either a target edge or vertex count. The relevant function calls for the remesher are:
 
-- **CLI**: `meshcli <filepath> <algorithm>`
-  - Example: `meshcli ./mesh/cat.obj lscm`
-  - The `<algorithm>` argument can be either `fixed` (for Fixed Boundary Parameterization) or `lscm` (for Least Squares Conformal Maps)
+  ```cpp
+  // Remesh to target edge count (approximate)
+  void remesh_to_target_edge_count(int target_edge_count, int iterations, const double rel_error_tol = .02);
 
-- **GUI**: `meshgui <filepath>`
-  - Example: `meshgui ./hw4_mesh/camel_head.obj`
+  // Remesh to target vertex count (approximate)
+  void remesh_to_target_vertex_count(int target_vertex_count, int iterations, const double rel_error_tol = .02);
+  ```
 
-## CLI Usage
-The CLI will read the mesh file and then apply either the fixed boundary or the lscm version. Fixed boundary is using the cotan weight scheme, while lscm is using the least squares conformal maps approach. The UV coordiantes are written back into a 2D mesh that can be inspected using the GUI. CLI renders are found in the `exports/` folder.
+  These calls will iteratively adjust the mesh to reach the desired edge or vertex count, within a specified relative error tolerance or maximum number of iterations.
 
-## GUI Usage
-Run the GUI with the path to mesh file. Select the desired parameterization algorithm using the radio buttons then click "Parameterize Mesh" to execute. The resulting UV parameterization will be displayed in the viewport.
+
+### References
+
+- Mario Botsch and Leif Kobbelt. **A Remeshing Approach to Multiresolution Modeling.**  
+  *Proceedings of the Eurographics/ACM SIGGRAPH Symposium on Geometry Processing*, 2004.
+
+- Munz Tanja. **Curvature Adaptive Remeshing.**  
+  Master’s Thesis, Bournemouth University, 2015.  
+  https://nccastaff.bournemouth.ac.uk/jmacey/MastersProject/MSc15/08Tanja/report.pdf
+
+

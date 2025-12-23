@@ -1670,7 +1670,5 @@ Mesh_modifier_uniform_remeshing::classify_vertex_feature_type(int v_idx)
   }
 }
 
-
-
 } // end of mohecore
 } // end of minimesh
