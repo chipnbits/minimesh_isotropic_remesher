@@ -28,9 +28,25 @@ Mesh_modifier_uniform_remeshing::remesh(double target_edge_length, int iteration
 {
   // Start time
   auto start_time = std::chrono::high_resolution_clock::now();
+
+  // Build feature edge and vertex lists
+  printf("Marking feature edges and vertices...\n");
+  mark_feature_edges_and_vertices();
+
   for(int i = 0; i < iterations; ++i)
   {
     printf("Remeshing Iteration %d / %d\n", i + 1, iterations);
+    run_single_pass(target_edge_length, N_SMOOTHING_ITERS);
+  }
+  // End time
+  auto end_time = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> elapsed = end_time - start_time;
+  printf("Remeshing completed in %.3f seconds.\n", elapsed.count());
+}
+
+void 
+Mesh_modifier_uniform_remeshing::run_single_pass(double target_edge_length, int tangential_smoothing_iters)
+{
     printf("Splitting long edges...\n");
     split_long_edges(target_edge_length, 4.0 / 3.0);
     printf("Collapsing short edges...\n");
@@ -38,12 +54,7 @@ Mesh_modifier_uniform_remeshing::remesh(double target_edge_length, int iteration
     printf("Flipping edges to optimize valence...\n");
     flip_edges_to_optimize_valence();
     printf("Performing tangential smoothing...\n");
-    tangential_smoothing(N_SMOOTHING_ITERS, SmoothingType::Barycenters);
-  }
-  // End time
-  auto end_time = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double> elapsed = end_time - start_time;
-  printf("Remeshing completed in %.3f seconds.\n", elapsed.count());
+    tangential_smoothing(tangential_smoothing_iters, SmoothingType::Barycenters);
 }
 
 // ============================================================
@@ -759,6 +770,7 @@ Mesh_modifier_uniform_remeshing::flip_edge(int he_index)
 // Helpers & Topology Checks
 // ============================================================
 
+
 double
 Mesh_modifier_uniform_remeshing::get_edge_length(int he_index) const
 {
@@ -932,7 +944,7 @@ Mesh_modifier_uniform_remeshing::is_legal_collapse(int v1, int v2, double thresh
   // 2. GEOMETRIC CHECKS (Botsch et al. 2010 Requirements)
   // ==========================================
 
-  // Calculate the collapse point (usually the midpoint)
+  // Calculate the collapse point
   auto p1 = mesh().vertex_at(v1).xyz();
   auto p2 = mesh().vertex_at(v2).xyz();
   Eigen::Vector3d p_new;
@@ -949,13 +961,13 @@ Mesh_modifier_uniform_remeshing::is_legal_collapse(int v1, int v2, double thresh
     p_new = 0.5 * (p1 + p2); // Midpoint
   }
 
-  // --- Requirement A: Edge Length Check ---
-  // Note: 'n1' and 'n2' currently hold neighbors excluding v1/v2.
+  // --- Requirement A: Edge Length Check, reject creating new long size edges ---
 
   // Combine all unique neighbors
   std::set<int> all_neighbors = n1;
   all_neighbors.insert(n2.begin(), n2.end());
 
+  // Avoid sqrt by comparing squared lengths
   double threshold_sq = threshold * threshold;
 
   for(int nid : all_neighbors)
@@ -968,6 +980,8 @@ Mesh_modifier_uniform_remeshing::is_legal_collapse(int v1, int v2, double thresh
   }
 
   // --- Requirement B: Intersection/Flip Check ---
+
+
   // TODO: Implement intersection/flip check
   // Helper lambda to check faces around a vertex
   // auto check_surface_normals = [&](int v_idx) -> bool {
@@ -1074,29 +1088,6 @@ Mesh_modifier_uniform_remeshing::get_one_ring_neighbors(int v_index) const
 }
 
 Eigen::Vector3d
-Mesh_modifier_uniform_remeshing::compute_barycenter(int v_index) const
-{
-  Eigen::Vector3d barycenter(0.0, 0.0, 0.0);
-  int count = 0;
-
-  Mesh_connectivity::Vertex_ring_iterator ring = _m.vertex_ring_at(v_index);
-  do
-  {
-    Mesh_connectivity::Half_edge_iterator he = ring.half_edge();
-    Mesh_connectivity::Vertex_iterator neighbor = he.origin();
-    barycenter += neighbor.xyz();
-    count++;
-  } while(ring.advance());
-
-  if(count > 0)
-  {
-    barycenter /= static_cast<double>(count);
-  }
-
-  return barycenter;
-}
-
-Eigen::Vector3d
 Mesh_modifier_uniform_remeshing::calculate_normal(const Eigen::Vector3d & p0,
     const Eigen::Vector3d & p1,
     const Eigen::Vector3d & p2) const
@@ -1135,7 +1126,6 @@ Mesh_modifier_uniform_remeshing::compute_geometry_cache()
     auto v3 = he3.origin();
     // Cycle v1 -> v2 -> v3 -> v1 half edges: he1, he2, he3
 
-
     // Compute face normal
     Eigen::Vector3d p1 = v1.xyz();
     Eigen::Vector3d p2 = v2.xyz();
@@ -1170,7 +1160,6 @@ Mesh_modifier_uniform_remeshing::compute_geometry_cache()
     Eigen::Vector3d e31 = -e13; // v3 -> v1
     Eigen::Vector3d e32 = -e23; // v3 -> v2
 
-
     double dot1 = std::max(-1.0, std::min(1.0, e12.dot(e13)));
     double angle1 = std::acos(dot1);
     double dot2 = std::max(-1.0, std::min(1.0, e23.dot(e21)));
@@ -1201,6 +1190,87 @@ Mesh_modifier_uniform_remeshing::compute_geometry_cache()
   return cache;
 }
 
+void
+Mesh_modifier_uniform_remeshing::mark_feature_edges_and_vertices()
+{
+  // Precompute all the face normals
+  auto mesh_geom_cache = compute_geometry_cache();
+
+  const int n_half_edges = mesh().n_total_half_edges();
+  const int n_vertices = mesh().n_total_vertices();
+  const double cos_feature_angle_rad = std::cos(FEATURE_ANGLE_DEGREES * (M_PI / 180.0));
+
+  _is_feature_edge.assign(n_half_edges, false);
+  _vertex_feature_type.assign(n_vertices, SIMPLE);
+
+  // Mark feature edges
+  for(int he_idx = 0; he_idx < n_half_edges; ++he_idx)
+  {
+    auto he = mesh().half_edge_at(he_idx);
+    if(!he.is_active())
+      continue; // Skip inactive half-edges
+
+    auto tw_index = he.twin().index();
+    if(he_idx > tw_index)
+      continue; // Process each edge only once
+
+    auto f1 = he.face().index();
+    auto f2 = he.twin().face().index();
+
+    bool is_boundary = (f1 == mesh().hole().index() || f2 == mesh().hole().index());
+
+    if(is_boundary)
+    {
+      _is_feature_edge[he_idx] = true; // Boundary edge is feature edge
+      _is_feature_edge[tw_index] = true;
+    }
+    else
+    {
+      // Both faces are valid, check angle between normals
+      double cos_beta = std::abs(mesh_geom_cache.vertex_normals[f1].dot(mesh_geom_cache.vertex_normals[f2]));
+      if(cos_beta < cos_feature_angle_rad)
+      {
+        // Mark as feature edge if angle exceeds threshold
+        _is_feature_edge[he_idx] = true;
+        _is_feature_edge[tw_index] = true;
+      }
+    }
+  }
+
+  // Classify vertices based on incident feature edges
+  for(int v_idx = 0; v_idx < n_vertices; ++v_idx)
+  {
+    if (!mesh().vertex_at(v_idx).is_active())
+      continue; // Skip inactive vertices
+
+    // Count incoming feature edges
+    auto ring = _m.vertex_ring_at(v_idx);
+    int feature_edge_count = 0;
+    do{
+      auto he = ring.half_edge();
+      if(_is_feature_edge[he.index()])
+        feature_edge_count++;
+    } while(ring.advance());
+
+    if(feature_edge_count == 0)
+    {
+      _vertex_feature_type[v_idx] = SIMPLE;
+    }
+    else if(feature_edge_count == 1)
+    {
+      _vertex_feature_type[v_idx] = CORNER;
+    }
+    else if(feature_edge_count == 2)
+    {
+      _vertex_feature_type[v_idx] = EDGE;
+    }
+    else
+    {
+      _vertex_feature_type[v_idx] = CORNER;
+    }
+  }
+  return;
+}
 
 } // end of mohecore
 } // end of minimesh

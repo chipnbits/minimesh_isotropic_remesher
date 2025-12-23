@@ -30,6 +30,14 @@ public:
     Barycenters // Area-weighted or CVT (Centroidal Voronoi) approximation
   };
 
+  // Figure 3.14 https://nccastaff.bournemouth.ac.uk/jmacey/MastersProject/MSc15/08Tanja/
+  enum VertexFeatureType
+  {
+    SIMPLE = 0,
+    EDGE = 1, // Two incident feature edges
+    CORNER = 2 // 1 or more than 2 incident feature edges
+  };
+
   struct GeometryCache
   {
     // Indexed by vertex index
@@ -55,16 +63,28 @@ public:
   //   iterations: Number of times to run the split/collapse/flip/smooth loop
   //
   void remesh(double target_edge_length, int iterations = 5);
+  void run_single_pass(double target_edge_length, int tangential_smoothing_iters);
 
 public:
   // pointer to the mesh that we are working on.
   Mesh_connectivity & _m;
 
-  int INTERIOR_VALENCE = 6;
-  int BOUNDARY_VALENCE = 4;
-  double EDGE_FLIP_THRESHOLD_DOT = 0.7; // Cosine of angle threshold for normal deviation check
-  double LAMBDA_SMOOTHING_DAMPING = 0.2; // Damping factor for vertex smoothing
-  int N_SMOOTHING_ITERS = 5; // Number of smoothing iterations
+  const int INTERIOR_VALENCE = 6;
+  const int BOUNDARY_VALENCE = 4;
+  const double EDGE_FLIP_THRESHOLD_DOT = 0.7; // Cosine of angle threshold for normal deviation check
+  const double LAMBDA_SMOOTHING_DAMPING = 0.2; // Damping factor for vertex smoothing
+  const int N_SMOOTHING_ITERS = 5; // Number of smoothing iterations
+
+  // Feature edges
+  const double FEATURE_ANGLE_DEGREES = 30.0; // Degrees
+  const double FEATURE_ANGLE_COSINE = cos(FEATURE_ANGLE_DEGREES * M_PI / 180.0);
+
+  // edge collapse checks
+  const double MIN_ANGLE_COSINE = 0.173648; // Cosine of 80 degrees
+  const double MIN_DIHEDRAL = -0.5; // Cosine of 120 degrees
+
+  std::vector<bool> _is_feature_edge;
+  std::vector<VertexFeatureType> _vertex_feature_type;
 
   // ============================================================
   // Core Remeshing Operations
@@ -123,6 +143,7 @@ public:
   // Used by flip_edges_to_optimize_valence
   int get_valence_deviation(int v_index) const;
 
+  // Determines if flipping the edge would improve valence deviation
   bool should_flip_edge(int he_index);
 
   // Checks edge collapse legality according to Botsch & Kobbelt criteri and length threshold
@@ -144,18 +165,15 @@ public:
   // Helper to get all neighbors of a vertex (for smoothing and checks)
   std::vector<int> get_one_ring_neighbors(int v_index) const;
 
-  // Computes the centroid of the one-ring neighbors
-  Eigen::Vector3d compute_barycenter(int v_index) const;
-
   // Compute a surface normal given three points in ccw cycle order
   Eigen::Vector3d calculate_normal(const Eigen::Vector3d & p0,
       const Eigen::Vector3d & p1,
       const Eigen::Vector3d & p2) const;
 
+  // Precompute geometry information for the current mesh state
   GeometryCache compute_geometry_cache();
 
-  // Populate un-normalized (area dependent) vertex normals for the entire mesh
-  std::vector<Eigen::Vector3d> compute_vertex_normals();
+  void mark_feature_edges_and_vertices();
 };
 } // end of mohecore
 } // end of minimesh
