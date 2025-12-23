@@ -63,16 +63,21 @@ public:
   const std::vector<bool>& get_feature_edges() const { return _is_feature_edge; }
   const std::vector<VertexFeatureType>& get_vertex_feature_types() const { return _vertex_feature_type; }
 
-  //
-  // Main Entry Point
-  // Executes the iterative remeshing algorithm described by
-  //
+  // ============================================================
+  // Main Remeshing Functions 
+  // ============================================================
+
+  // Automatic isotropic remeshing to target edge length
   // Params:
   //   target_edge_length: The uniform global target length (L)
   //   iterations: Number of times to run the split/collapse/flip/smooth loop
-  //
   void remesh(double target_edge_length, int iterations = 5);
+
+  // Single pass of remeshing operations (for use with GUI or custom loops)
   void run_single_pass(double target_edge_length, int tangential_smoothing_iters);
+
+  // Remesh to target edge count (approximate)
+  void remesh_to_target_edge_count(int target_edge_count, int iterations, const double rel_error_tol = .02);
 
 public:
   // pointer to the mesh that we are working on.

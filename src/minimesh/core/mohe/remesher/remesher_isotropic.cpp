@@ -72,6 +72,86 @@ Mesh_modifier_uniform_remeshing::run_single_pass(double target_edge_length, int 
   tangential_smoothing(tangential_smoothing_iters, SmoothingType::Barycenters);
 }
 
+void
+Mesh_modifier_uniform_remeshing::remesh_to_target_edge_count(int target_edge_count,
+    int iterations,
+    const double rel_error_tol)
+{
+  double net_len = 0.0;
+  int active_edges = 0;
+  for(int e = 0; e < mesh().n_total_half_edges(); ++e)
+  {
+    auto he = mesh().half_edge_at(e);
+    if(he.is_active() && e < he.twin().index())
+    { // Count each edge once
+      net_len += get_edge_length(e);
+      active_edges++;
+    }
+  }
+  double current_L = net_len / active_edges;
+  double early_termination_seen = false;
+
+  printf("Targeting %d edges. Starting with %d edges, Avg L = %f\n", target_edge_count, active_edges, current_L);
+
+  for(int i = 0; i < iterations; ++i)
+  {
+
+    // Get edge count
+    active_edges = 0;
+    for(int he = 0; he < mesh().n_total_half_edges(); ++he)
+    {
+      if(mesh().half_edge_at(he).is_active() && he < mesh().half_edge_at(he).twin().index())
+      {
+        active_edges++;
+      }
+    }
+
+    // Assume equilateral triangles and constant total mesh area A
+    // A = N (sqrt(3)/4)*L^2 for A constant -> N_new *L_new^2 = N_cur*L_cur^2
+    double scaling_factor = std::sqrt(static_cast<double>(active_edges) / target_edge_count);
+    if(std::abs(1 - scaling_factor) < rel_error_tol)
+    {
+      if(!early_termination_seen)
+      {
+        early_termination_seen = true;
+        printf("Close to target %i within tolerance, running one final iteration.\n", target_edge_count);
+      }
+      else
+      {
+        printf("Reached close to target %i within tolerance after %d iterations.\n", active_edges, i);
+        break;
+      }
+    }
+    else
+    {
+      early_termination_seen = false;
+    }
+
+    // Clamp to stop extreme changes
+    scaling_factor = std::max(0.8, std::min(1.2, scaling_factor));
+    double next_target_L = current_L * scaling_factor;
+
+    printf("Iter %d: Edges %d -> Target %d. Updating L: %f -> %f\n",
+        i + 1,
+        active_edges,
+        target_edge_count,
+        current_L,
+        next_target_L);
+
+    run_single_pass(next_target_L, N_SMOOTHING_ITERS);
+
+    for(int he = 0; he < mesh().n_total_half_edges(); ++he)
+    {
+      if(mesh().half_edge_at(he).is_active() && he < mesh().half_edge_at(he).twin().index())
+      {
+        active_edges++;
+      }
+    }
+
+
+    current_L = next_target_L;
+  }
+}
 // ============================================================
 // Core Remeshing Operations
 // ============================================================
@@ -208,61 +288,67 @@ Mesh_modifier_uniform_remeshing::tangential_smoothing(int smoothing_iters, Smoot
       //   new_pos[vi] = vert.xyz(); // Keep boundary vertices fixed
       //   continue;
       // }
-      if (vt == CORNER)
+      if(vt == CORNER)
       {
         new_pos[vi] = vert.xyz(); // Keep corner vertices fixed
         continue;
       }
 
-      if (vt == EDGE){
+      if(vt == EDGE)
+      {
         // During tangential relaxation vertices can be moved along boundary edges
         // only. For the calculation the incident triangles are replaced by the two incident
         // feature edges, triangle areas by edge lengths and barycentres by midpoints
-        Eigen::Vector3d weighted_center(0,0,0);
+        Eigen::Vector3d weighted_center(0, 0, 0);
         std::vector<Eigen::Vector3d> feature_neighbors; // collect feature edge neighbors
         double weight_sum = 0.0;
         int count = 0;
 
         auto ring = _m.vertex_ring_at(vi);
-        do {
-            int he_idx = ring.half_edge().index();
-      
-            if (_is_feature_edge[he_idx]) {
-                auto neighbor_p = ring.half_edge().origin().xyz();
-                int neighbor_idx = ring.half_edge().origin().index();
-                feature_neighbors.push_back(neighbor_p);
-                
-                // "Triangle areas replaced by edge lengths"
-                double dist = (neighbor_p - vert.xyz()).norm();
-                // "Barycenters replaced by midpoint"
-                Eigen::Vector3d midpoint = 0.5 * (vert.xyz() + neighbor_p);
+        do
+        {
+          int he_idx = ring.half_edge().index();
 
-                double adaptive_sizing = (adaptive_sizing_field[vi] + adaptive_sizing_field[neighbor_idx]) / 2.0;
-                double weight = dist * adaptive_sizing;
-                
-                weighted_center += weight * midpoint;
-                weight_sum += weight;
-                count++;
-            }
+          if(_is_feature_edge[he_idx])
+          {
+            auto neighbor_p = ring.half_edge().origin().xyz();
+            int neighbor_idx = ring.half_edge().origin().index();
+            feature_neighbors.push_back(neighbor_p);
+
+            // "Triangle areas replaced by edge lengths"
+            double dist = (neighbor_p - vert.xyz()).norm();
+            // "Barycenters replaced by midpoint"
+            Eigen::Vector3d midpoint = 0.5 * (vert.xyz() + neighbor_p);
+
+            double adaptive_sizing = (adaptive_sizing_field[vi] + adaptive_sizing_field[neighbor_idx]) / 2.0;
+            double weight = dist * adaptive_sizing;
+
+            weighted_center += weight * midpoint;
+            weight_sum += weight;
+            count++;
+          }
         } while(ring.advance());
 
         // We expect exactly 2 edge neighbors for type EDGE
-        if (count > 0 && weight_sum > 1e-9) {
-            Eigen::Vector3d target = weighted_center / weight_sum;
+        if(count > 0 && weight_sum > 1e-9)
+        {
+          Eigen::Vector3d target = weighted_center / weight_sum;
 
-            // Project move onto feature edge direction
-            Eigen::Vector3d edge_dir = (feature_neighbors[1] - feature_neighbors[0]).normalized();
-            Eigen::Vector3d move_vec = target - vert.xyz();
+          // Project move onto feature edge direction
+          Eigen::Vector3d edge_dir = (feature_neighbors[1] - feature_neighbors[0]).normalized();
+          Eigen::Vector3d move_vec = target - vert.xyz();
 
-            Eigen::Vector3d projected_move = move_vec.dot(edge_dir) * edge_dir;
-            new_pos[vi] = vert.xyz() + LAMBDA_SMOOTHING_DAMPING * projected_move;
-            needs_update[vi] = true;
-        } else {
-            new_pos[vi] = vert.xyz(); 
+          Eigen::Vector3d projected_move = move_vec.dot(edge_dir) * edge_dir;
+          new_pos[vi] = vert.xyz() + LAMBDA_SMOOTHING_DAMPING * projected_move;
+          needs_update[vi] = true;
+        }
+        else
+        {
+          new_pos[vi] = vert.xyz();
         }
         continue; // Done with this vertex
       }
-      
+
       // ==========================
       // Simple non-FeatureCase: SMOOTH vertex
       // ==========================
@@ -597,19 +683,19 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index, double threshold)
   }
   else
   {
-    assert(t1 !=CORNER || t2 != CORNER);
-    if (t1 == CORNER)
+    assert(t1 != CORNER || t2 != CORNER);
+    if(t1 == CORNER)
       new_pos = v1_iter.xyz();
-    else if (t2 == CORNER)
+    else if(t2 == CORNER)
       new_pos = v2_iter.xyz();
-    else if (t1 == EDGE && t2 == SIMPLE)
+    else if(t1 == EDGE && t2 == SIMPLE)
       new_pos = v1_iter.xyz();
-    else if (t1 == SIMPLE && t2 == EDGE)
+    else if(t1 == SIMPLE && t2 == EDGE)
       new_pos = v2_iter.xyz();
-    else if (t1 == EDGE && t2 == EDGE)
+    else if(t1 == EDGE && t2 == EDGE)
       new_pos = 0.5 * (v1_iter.xyz() + v2_iter.xyz()); // Midpoint on feature edge
     else
-    new_pos = 0.5 * (v2_iter.xyz() + v1_iter.xyz()); // Midpoint for simple-simple case
+      new_pos = 0.5 * (v2_iter.xyz() + v1_iter.xyz()); // Midpoint for simple-simple case
   }
 
   // Remap all half-edges originating from v2 to originate from v1
@@ -836,8 +922,14 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index, double threshold)
 
   // Move vertex v1 to optimal position
   mesh().vertex_at(v1).data().xyz = new_pos;
-  // Reclassify vertex feature type based on edges
-  _vertex_feature_type[v1] = classify_vertex_feature_type(v1);
+
+  // Inherit feature type (most restrictive)
+  if(t1 == CORNER || t2 == CORNER)
+    _vertex_feature_type[v1] = CORNER;
+  else if(t1 == EDGE || t2 == EDGE)
+    _vertex_feature_type[v1] = EDGE;
+  else
+    _vertex_feature_type[v1] = SIMPLE;
 
   return true;
 }
@@ -1072,7 +1164,7 @@ Mesh_modifier_uniform_remeshing::is_legal_collapse(int v1, int v2, double thresh
   else
   {
     // Stop collapse of parallel feature lines into a corner
-    if (v1_type != SIMPLE && v2_type != SIMPLE)
+    if(v1_type != SIMPLE && v2_type != SIMPLE)
       return false;
   }
   // At most one vertex can be a feature vertex or both are edge vertices and midpoint is okay now
