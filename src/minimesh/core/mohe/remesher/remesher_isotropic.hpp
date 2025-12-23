@@ -79,6 +79,9 @@ public:
   // Remesh to target edge count (approximate)
   void remesh_to_target_edge_count(int target_edge_count, int iterations, const double rel_error_tol = .02);
 
+  // Remesh to target vertex count (approximate)
+  void remesh_to_target_vertex_count(int target_vertex_count, int iterations, const double rel_error_tol = .02);
+
 public:
   // pointer to the mesh that we are working on.
   Mesh_connectivity & _m;

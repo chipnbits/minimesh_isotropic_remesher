@@ -152,6 +152,95 @@ Mesh_modifier_uniform_remeshing::remesh_to_target_edge_count(int target_edge_cou
     current_L = next_target_L;
   }
 }
+
+void
+Mesh_modifier_uniform_remeshing::remesh_to_target_vertex_count(int target_vertex_count,
+    int iterations,
+    const double rel_error_tol)
+{
+  double net_len = 0.0;
+  int active_edges = 0;
+  for(int e = 0; e < mesh().n_total_half_edges(); ++e)
+  {
+    auto he = mesh().half_edge_at(e);
+    if(he.is_active() && e < he.twin().index())
+    { // Count each edge once
+      net_len += get_edge_length(e);
+      active_edges++;
+    }
+  }
+  double current_L = net_len / active_edges;
+
+  int active_vertices = 0;
+  for(int v = 0; v < mesh().n_total_vertices(); ++v)
+  {
+    if(mesh().vertex_at(v).is_active())
+    {
+      active_vertices++;
+    }
+  }
+
+  double early_termination_seen = false;
+
+  printf("Targeting %d vertices. Starting with %d vertices, Avg L = %f\n", target_vertex_count, active_vertices, current_L);
+
+  for(int i = 0; i < iterations; ++i)
+  {
+
+    // Get vertex count
+    active_vertices = 0;
+    for(int v = 0; v < mesh().n_total_vertices(); ++v)
+    {
+      if(mesh().vertex_at(v).is_active())
+      {
+        active_vertices++;
+      }
+    }
+
+    // Assume equilateral triangles with valence 6 and constant total mesh area A
+    // A = (sqrt(3)/4)*L^2 * (N*6/2) for A constant -> N_new *L_new^2 = N_cur*L_cur^2
+    double scaling_factor = std::sqrt(static_cast<double>(active_vertices) / target_vertex_count);
+    if(std::abs(1 - scaling_factor) < rel_error_tol)
+    {
+      if(!early_termination_seen)
+      {
+        early_termination_seen = true;
+        printf("Close to target %i within tolerance, running one final iteration.\n", target_vertex_count);
+      }
+      else
+      {
+        printf("Reached close to target %i within tolerance after %d iterations.\n", active_vertices, i);
+        break;
+      }
+    }
+    else
+    {
+      early_termination_seen = false;
+    }
+
+    // Clamp to stop extreme changes
+    scaling_factor = std::max(0.8, std::min(1.2, scaling_factor));
+    double next_target_L = current_L * scaling_factor;
+
+    printf("Iter %d: Vertices %d -> Target %d. Updating L: %f -> %f\n",
+        i + 1,
+        active_vertices,
+        target_vertex_count,
+        current_L,
+        next_target_L); 
+    run_single_pass(next_target_L, N_SMOOTHING_ITERS);
+    for(int v = 0; v < mesh().n_total_vertices(); ++v)
+    {
+      if(mesh().vertex_at(v).is_active())
+      {
+        active_vertices++;
+      }
+    }
+    current_L = next_target_L;
+  }
+}
+
+
 // ============================================================
 // Core Remeshing Operations
 // ============================================================
