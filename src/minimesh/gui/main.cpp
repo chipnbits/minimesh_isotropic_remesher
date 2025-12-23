@@ -15,6 +15,7 @@
 #include <minimesh/core/mohe/mesh_modifier_arap.hpp>
 #include <minimesh/core/mohe/mesh_modifier_edge_collapse.hpp>
 #include <minimesh/core/mohe/mesh_modifier_loop_subdivision.hpp>
+#include <minimesh/core/mohe/remesher/remesher_isotropic.hpp>
 #include <minimesh/core/mohe/fixed_uv_param.hpp>
 #include <minimesh/core/mohe/lscm_uv_param.hpp>
 #include <minimesh/core/util/assert.hpp>
@@ -35,8 +36,10 @@ namespace globalvars
 {
 Mesh_viewer viewer;
 mohecore::Mesh_connectivity mesh;
+mohecore::Mesh_modifier_uniform_remeshing modi_remesh(mesh);
 mohecore::Mesh_modifier_edge_collapse modi_edge(mesh);
 mohecore::Mesh_modifier_arap modi_arap(mesh);
+
 //
 int glut_main_window_id;
 //
@@ -48,8 +51,11 @@ Eigen::Matrix3Xd deformed_vertex_positions; // Current displayed vertex position
 //
 bool show_collapse_overlay = false; // Toggle state for edge collapse visualization
 int deform_mode = 0; // Toggle state for deform mode (enables anchor selection and ARAP)
+int remesh_mode = 0; // Toggle state for remeshing mode (enables feature visualization)
 //
 int param_algorithm = 0; // 0 = Harmonic (Fixed), 1 = LSCM
+//
+float target_edge_length = 0.05f; // Target edge length for remeshing
 //
 int const DEFORMATION_INTERVAL = 10; // Throttle interval in milliseconds
 std::chrono::steady_clock::time_point last_deform_time = std::chrono::steady_clock::now();
@@ -197,15 +203,21 @@ mouse_moved(int x, int y)
       }
     }
 
+    // Compute defragmentation maps to properly translate vertex positions
+    // from old (sparse) indices to new (compact) mesh buffer indices
+    mohecore::Mesh_connectivity::Defragmentation_maps defrag;
+    globalvars::mesh.compute_defragmention_maps(defrag);
 
-    // If the mesh was defragmented, you should have done:
-    // Mesh_connectivity::Defragmentation_maps defrag;
-    // globalvars::mesh.compute_defragmention_maps(defrag);
-    // deformed_vertex_positions.col(defrag.old2new_vertex[j]) += pull_amount.cast<double>();
-    globalvars::viewer.get_mesh_buffer().set_vertex_positions(globalvars::deformed_vertex_positions.cast<float>());
+    // Create a compact position matrix for only active vertices
+    Eigen::Matrix3Xf compact_positions(3, globalvars::mesh.n_active_vertices());
+    for(int i = 0; i < globalvars::mesh.n_active_vertices(); ++i)
+    {
+      int old_vertex_idx = defrag.new2old_vertices[i];
+      compact_positions.col(i) = globalvars::deformed_vertex_positions.col(old_vertex_idx).cast<float>();
+    }
 
-    // update positions (only the viewer)
-
+    // Update the mesh buffer with compact positions
+    globalvars::viewer.get_mesh_buffer().set_vertex_positions(compact_positions);
 
     // Must rerender now.
     should_redraw = true;
@@ -476,6 +488,69 @@ update_anchor_visualization()
 }
 
 void
+update_remesh_feature_visualization()
+{
+  // Clear visualization if remesh mode is off
+  if(!globalvars::remesh_mode)
+  {
+    // Reset all vertices to default gray
+    int n_active_verts = globalvars::mesh.n_active_vertices();
+    Eigen::Matrix4Xf vertex_colors(4, n_active_verts);
+    vertex_colors.setConstant(0.7f);
+    globalvars::viewer.get_mesh_buffer().set_vertex_colors(vertex_colors);
+
+    // Clear spheres
+    Eigen::VectorXi empty_indices(0);
+    Eigen::Matrix4Xf empty_colors(4, 0);
+    globalvars::viewer.get_mesh_buffer().set_colorful_spheres(empty_indices, empty_colors);
+    return;
+  }
+
+  // Compute defragmentation maps to handle vertex indexing
+  mohecore::Mesh_connectivity::Defragmentation_maps defrag;
+  globalvars::mesh.compute_defragmention_maps(defrag);
+
+  // Prepare vertex colors (default to gray)
+  int n_active_verts = globalvars::mesh.n_active_vertices();
+  Eigen::Matrix4Xf vertex_colors(4, n_active_verts);
+  vertex_colors.setConstant(0.7f); // Default: gray
+  vertex_colors.row(3).setConstant(1.0f); // Alpha channel
+
+  // Get feature edge and vertex type vectors from remesher via getters
+  const std::vector<mohecore::Mesh_modifier_uniform_remeshing::VertexFeatureType>& vertex_feature_type =
+      globalvars::modi_remesh.get_vertex_feature_types();
+
+  // Color feature vertices with light blue
+  for(int v_idx = 0; v_idx < globalvars::mesh.n_total_vertices(); ++v_idx)
+  {
+    auto vert = globalvars::mesh.vertex_at(v_idx);
+    if(!vert.is_active())
+      continue;
+
+    if(v_idx >= static_cast<int>(vertex_feature_type.size()))
+      break;
+
+    auto vtype = vertex_feature_type[v_idx];
+    if(vtype == mohecore::Mesh_modifier_uniform_remeshing::EDGE ||
+       vtype == mohecore::Mesh_modifier_uniform_remeshing::CORNER)
+    {
+      // Get the defragmented index for this vertex
+      int active_idx = defrag.old2new_vertices[v_idx];
+      // Light blue color (R=0.3, G=0.6, B=1.0, A=1)
+      vertex_colors.col(active_idx) << 0.3f, 0.6f, 1.0f, 1.0f;
+    }
+  }
+
+  // Apply vertex colors to mesh buffer
+  globalvars::viewer.get_mesh_buffer().set_vertex_colors(vertex_colors);
+
+  // Clear spheres since we're using vertex colors instead
+  Eigen::VectorXi empty_indices(0);
+  Eigen::Matrix4Xf empty_colors(4, 0);
+  globalvars::viewer.get_mesh_buffer().set_colorful_spheres(empty_indices, empty_colors);
+}
+
+void
 deform_mode_changed(int)
 {
   // When deform mode is toggled, update anchor visualization
@@ -503,6 +578,60 @@ deform_mode_changed(int)
     printf("Deform mode disabled - anchor visualization turned off\n");
     // Clear anchor visualization
     update_anchor_visualization();
+  }
+
+  glutPostRedisplay();
+}
+
+void
+remesh_mode_changed(int)
+{
+  // When remesh mode is toggled, update visualization
+  if(globalvars::remesh_mode)
+  {
+    printf("Remesh mode enabled - visualizing feature edges and vertices\n");
+
+    // Update visualization (feature lists already built at initialization)
+    update_remesh_feature_visualization();
+
+    printf("Feature edges and vertices visualized\n");
+  }
+  else
+  {
+    printf("Remesh mode disabled - feature visualization turned off\n");
+    // Clear feature visualization
+    update_remesh_feature_visualization();
+  }
+
+  glutPostRedisplay();
+}
+
+void
+remesh_single_pass_pressed(int)
+{
+  printf("Remesh single pass button pressed with target edge length: %.4f\n", globalvars::target_edge_length);
+
+  // Run a single remeshing pass (feature lists are managed internally by the remesher)
+  globalvars::modi_remesh.run_single_pass(static_cast<double>(globalvars::target_edge_length), 5);
+
+  printf("Single remeshing pass completed\n");
+
+  // Rebuild the viewer with the modified mesh
+  mohecore::Mesh_connectivity::Defragmentation_maps defrag;
+  globalvars::mesh.compute_defragmention_maps(defrag);
+  globalvars::viewer.get_mesh_buffer().rebuild(globalvars::mesh, defrag);
+
+  // Reset deformed positions to match new mesh
+  globalvars::deformed_vertex_positions.resize(3, globalvars::mesh.n_total_vertices());
+  for(int i = 0; i < globalvars::mesh.n_total_vertices(); ++i)
+  {
+    globalvars::deformed_vertex_positions.col(i) = globalvars::mesh.vertex_at(i).xyz();
+  }
+
+  // If remesh mode is enabled, update visualization with current feature lists
+  if(globalvars::remesh_mode)
+  {
+    update_remesh_feature_visualization();
   }
 
   glutPostRedisplay();
@@ -649,8 +778,9 @@ main(int argc, char * argv[])
     globalvars::viewer.get_mesh_buffer().rebuild(globalvars::mesh, defrag);
   }
 
-  // Setup background modifier for edge collapse
+  // Setup background modifiers
   globalvars::modi_edge.initialize();
+  globalvars::modi_remesh.initialize(); // Re-initialize after mesh is loaded
 
   //
   // Add radio buttons to see which mesh components to view
@@ -735,6 +865,30 @@ main(int argc, char * argv[])
   GLUI_Button * button_param =
       globalvars::glui->add_button_to_panel(panel_param, "Compute Parameterization", -1, freeglutcallback::parameterization_pressed);
   button_param->set_w(200);
+
+  //
+  // Add Remeshing Panel
+  //
+  GLUI_Panel * panel_remesh = globalvars::glui->add_panel("Remeshing");
+
+  // Add Remesh Mode checkbox
+  globalvars::glui->add_checkbox_to_panel(
+      panel_remesh, "Remesh Mode", &globalvars::remesh_mode, -1, freeglutcallback::remesh_mode_changed);
+
+  // Add spinner for target edge length
+  GLUI_Spinner * spinner_edge_length = globalvars::glui->add_spinner_to_panel(panel_remesh,
+      "Target Edge Length",
+      GLUI_SPINNER_FLOAT,
+      &globalvars::target_edge_length);
+  spinner_edge_length->set_alignment(GLUI_ALIGN_CENTER);
+  spinner_edge_length->set_w(300);
+  spinner_edge_length->set_float_limits(0.001f, 1.0f);
+  spinner_edge_length->set_speed(0.001f);
+
+  // Add button to run single remeshing pass
+  GLUI_Button * button_remesh_pass =
+      globalvars::glui->add_button_to_panel(panel_remesh, "Run Single Pass", -1, freeglutcallback::remesh_single_pass_pressed);
+  button_remesh_pass->set_w(200);
 
   //
   // Add show spheres button to demo how to draw spheres on top of the vertices

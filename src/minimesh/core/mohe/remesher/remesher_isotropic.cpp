@@ -59,17 +59,17 @@ Mesh_modifier_uniform_remeshing::remesh(double target_edge_length, int iteration
   printf("Remeshing completed in %.3f seconds.\n", elapsed.count());
 }
 
-void 
+void
 Mesh_modifier_uniform_remeshing::run_single_pass(double target_edge_length, int tangential_smoothing_iters)
 {
-    printf("Splitting long edges...\n");
-    split_long_edges(target_edge_length, 4.0 / 3.0);
-    printf("Collapsing short edges...\n");
-    collapse_short_edges(target_edge_length, 4.0 / 5.0);
-    printf("Flipping edges to optimize valence...\n");
-    flip_edges_to_optimize_valence();
-    printf("Performing tangential smoothing...\n");
-    tangential_smoothing(tangential_smoothing_iters, SmoothingType::Barycenters);
+  printf("Splitting long edges...\n");
+  split_long_edges(target_edge_length, 4.0 / 3.0);
+  printf("Collapsing short edges...\n");
+  collapse_short_edges(target_edge_length, 4.0 / 5.0);
+  printf("Flipping edges to optimize valence...\n");
+  flip_edges_to_optimize_valence();
+  printf("Performing tangential smoothing...\n");
+  tangential_smoothing(tangential_smoothing_iters, SmoothingType::Barycenters);
 }
 
 // ============================================================
@@ -199,14 +199,73 @@ Mesh_modifier_uniform_remeshing::tangential_smoothing(int smoothing_iters, Smoot
     for(int vi = 0; vi < num_vertices; ++vi)
     {
       auto vert = mesh().vertex_at(vi);
+      VertexFeatureType vt = _vertex_feature_type[vi];
       if(!vert.is_active())
         continue;
 
-      if(analysis::vertex_is_boundary(mesh(), vi))
+      // if(analysis::vertex_is_boundary(mesh(), vi))
+      // {
+      //   new_pos[vi] = vert.xyz(); // Keep boundary vertices fixed
+      //   continue;
+      // }
+      if (vt == CORNER)
       {
-        new_pos[vi] = vert.xyz(); // Keep boundary vertices fixed
+        new_pos[vi] = vert.xyz(); // Keep corner vertices fixed
         continue;
       }
+
+      if (vt == EDGE){
+        // During tangential relaxation vertices can be moved along boundary edges
+        // only. For the calculation the incident triangles are replaced by the two incident
+        // feature edges, triangle areas by edge lengths and barycentres by midpoints
+        Eigen::Vector3d weighted_center(0,0,0);
+        std::vector<Eigen::Vector3d> feature_neighbors; // collect feature edge neighbors
+        double weight_sum = 0.0;
+        int count = 0;
+
+        auto ring = _m.vertex_ring_at(vi);
+        do {
+            int he_idx = ring.half_edge().index();
+      
+            if (_is_feature_edge[he_idx]) {
+                auto neighbor_p = ring.half_edge().origin().xyz();
+                int neighbor_idx = ring.half_edge().origin().index();
+                feature_neighbors.push_back(neighbor_p);
+                
+                // "Triangle areas replaced by edge lengths"
+                double dist = (neighbor_p - vert.xyz()).norm();
+                // "Barycenters replaced by midpoint"
+                Eigen::Vector3d midpoint = 0.5 * (vert.xyz() + neighbor_p);
+
+                double adaptive_sizing = (adaptive_sizing_field[vi] + adaptive_sizing_field[neighbor_idx]) / 2.0;
+                double weight = dist * adaptive_sizing;
+                
+                weighted_center += weight * midpoint;
+                weight_sum += weight;
+                count++;
+            }
+        } while(ring.advance());
+
+        // We expect exactly 2 edge neighbors for type EDGE
+        if (count > 0 && weight_sum > 1e-9) {
+            Eigen::Vector3d target = weighted_center / weight_sum;
+
+            // Project move onto feature edge direction
+            Eigen::Vector3d edge_dir = (feature_neighbors[1] - feature_neighbors[0]).normalized();
+            Eigen::Vector3d move_vec = target - vert.xyz();
+
+            Eigen::Vector3d projected_move = move_vec.dot(edge_dir) * edge_dir;
+            new_pos[vi] = vert.xyz() + LAMBDA_SMOOTHING_DAMPING * projected_move;
+            needs_update[vi] = true;
+        } else {
+            new_pos[vi] = vert.xyz(); 
+        }
+        continue; // Done with this vertex
+      }
+      
+      // ==========================
+      // Simple non-FeatureCase: SMOOTH vertex
+      // ==========================
 
       Eigen::Vector3d target_pos = vert.xyz();
 
@@ -308,15 +367,14 @@ Mesh_modifier_uniform_remeshing::split_edge(int he_index, double weight)
   if(!tw_1.is_active())
     return mesh().invalid_index;
 
+  bool split_is_feature = _is_feature_edge[he_1.index()];
+
   // Get all involved vertices, half-edges, and faces
   auto he_2 = he_1.next();
-  ;
   auto tw_2 = tw_1.next();
   auto he_3 = he_1.prev();
-  ;
   auto tw_3 = tw_1.prev();
   auto F1 = he_1.face();
-  ;
   auto F2 = tw_1.face();
 
   // Get the two vertices of the edge
@@ -459,6 +517,36 @@ Mesh_modifier_uniform_remeshing::split_edge(int he_index, double weight)
     F4.data().half_edge = tw_4.index();
   }
 
+  // Update all feature markings
+  // Resize feature edge and vertex type containers if needed
+  ensure_property_containers_size();
+  _is_feature_edge[he_4.index()] = split_is_feature;
+  _is_feature_edge[tw_4.index()] = split_is_feature;
+
+  if(!he_face_is_hole)
+  {
+    // Update he5 and he6 if they were created
+    _is_feature_edge[he_2.next().index()] = false;
+    _is_feature_edge[he_1.next().index()] = false;
+  }
+
+  if(!tw_face_is_hole)
+  {
+    // Update tw5 and tw6 if they were created
+    _is_feature_edge[tw_4.next().index()] = false;
+    _is_feature_edge[tw_2.next().index()] = false;
+  }
+  if(split_is_feature)
+  {
+    // New vertex is feature if original
+    _vertex_feature_type[v5.index()] = EDGE;
+  }
+  else
+  {
+    // New vertex is simple if edge is not feature
+    _vertex_feature_type[v5.index()] = SIMPLE;
+  }
+
   return v5.index();
 }
 
@@ -497,6 +585,8 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index, double threshold)
 
   // Determine conditional collapse position (do not move boundary vertices)
   Eigen::Vector3d new_pos;
+  VertexFeatureType t1 = _vertex_feature_type[v1];
+  VertexFeatureType t2 = _vertex_feature_type[v2];
   if(v1_boundary && !v2_boundary)
   {
     new_pos = v1_iter.xyz(); // Keep v1 where it is
@@ -507,7 +597,19 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index, double threshold)
   }
   else
   {
-    new_pos = 0.5 * (v2_iter.xyz() + v1_iter.xyz()); // Midpoint
+    assert(t1 !=CORNER || t2 != CORNER);
+    if (t1 == CORNER)
+      new_pos = v1_iter.xyz();
+    else if (t2 == CORNER)
+      new_pos = v2_iter.xyz();
+    else if (t1 == EDGE && t2 == SIMPLE)
+      new_pos = v1_iter.xyz();
+    else if (t1 == SIMPLE && t2 == EDGE)
+      new_pos = v2_iter.xyz();
+    else if (t1 == EDGE && t2 == EDGE)
+      new_pos = 0.5 * (v1_iter.xyz() + v2_iter.xyz()); // Midpoint on feature edge
+    else
+    new_pos = 0.5 * (v2_iter.xyz() + v1_iter.xyz()); // Midpoint for simple-simple case
   }
 
   // Remap all half-edges originating from v2 to originate from v1
@@ -534,6 +636,15 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index, double threshold)
     he_v2_v1.deactivate();
     // Deactivate vertex v2
     v2_iter.deactivate();
+
+    // Update feature edge markings
+    _is_feature_edge[he_v1_v2.next().twin().index()] = false;
+    _is_feature_edge[he_v1_v2.next().index()] = false;
+    _is_feature_edge[he_v1_v2.index()] = false;
+    _is_feature_edge[he_v2_v1.prev().twin().index()] = false;
+    _is_feature_edge[he_v2_v1.prev().index()] = false;
+    _is_feature_edge[he_v2_v1.index()] = false;
+    _vertex_feature_type[v2] = SIMPLE; // SIMPLE for safety
 
     // Check if this is a degenerate case where face_f1 == face_f2
     bool is_degenerate = he_s1.is_equal(he_s2);
@@ -618,6 +729,12 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index, double threshold)
     he_v2_v1.deactivate();
     v2_iter.deactivate();
 
+    _is_feature_edge[he_v1_v2.next().twin().index()] = false;
+    _is_feature_edge[he_v1_v2.next().index()] = false;
+    _is_feature_edge[he_v1_v2.index()] = false;
+    _is_feature_edge[he_v2_v1.index()] = false;
+    _vertex_feature_type[v2] = SIMPLE; // SIMPLE for safety
+
     // --- Top Side: Standard Triangle Removal ---
     he_f1_associate.data().next = he_f1_bottom.index();
     he_f1_bottom.data().prev = he_f1_associate.index();
@@ -658,6 +775,12 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index, double threshold)
     he_v2_v1.deactivate();
     v2_iter.deactivate();
 
+    _is_feature_edge[he_v1_v2.index()] = false;
+    _is_feature_edge[he_v2_v1.prev().twin().index()] = false;
+    _is_feature_edge[he_v2_v1.prev().index()] = false;
+    _is_feature_edge[he_v2_v1.index()] = false;
+    _vertex_feature_type[v2] = SIMPLE; // SIMPLE for safety
+
     // --- Top Side: Boundary Stitching ---
     auto prev_he = he_v1_v2.prev();
     auto next_he = he_v1_v2.next();
@@ -692,6 +815,10 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index, double threshold)
     he_v2_v1.deactivate();
     v2_iter.deactivate();
 
+    _is_feature_edge[he_v1_v2.index()] = false;
+    _is_feature_edge[he_v2_v1.index()] = false;
+    _vertex_feature_type[v2] = SIMPLE; // SIMPLE for safety
+
     // Stitch Top
     auto t_prev = he_v1_v2.prev();
     auto t_next = he_v1_v2.next();
@@ -709,6 +836,9 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index, double threshold)
 
   // Move vertex v1 to optimal position
   mesh().vertex_at(v1).data().xyz = new_pos;
+  // Reclassify vertex feature type based on edges
+  _vertex_feature_type[v1] = classify_vertex_feature_type(v1);
+
   return true;
 }
 
@@ -821,6 +951,11 @@ Mesh_modifier_uniform_remeshing::should_flip_edge(int he_index)
   auto he = mesh().half_edge_at(he_index);
   auto twin = he.twin();
 
+  if(_is_feature_edge[he.index()])
+  {
+    return false; // Dont flip feature edges
+  }
+
   int v1 = he.origin().index();
   int v2 = twin.origin().index();
   int o1 = he.next().dest().index();
@@ -920,6 +1055,27 @@ Mesh_modifier_uniform_remeshing::is_legal_collapse(int v1, int v2, double thresh
   // Boundary edge rule, do not collapse interior edge connecting two boundary vertices
   if(v1_boundary && v2_boundary && !edge_is_boundary)
     return false;
+
+  // ==========================================
+  // 1. FEATURE CHECKS
+  // ==========================================
+  bool is_feature_edge = _is_feature_edge[he.index()];
+  VertexFeatureType v1_type = _vertex_feature_type[v1];
+  VertexFeatureType v2_type = _vertex_feature_type[v2];
+
+  if(is_feature_edge)
+  {
+    // No corners allowed for feature edge collapse
+    if(v1_type == CORNER || v2_type == CORNER)
+      return false;
+  }
+  else
+  {
+    // Stop collapse of parallel feature lines into a corner
+    if (v1_type != SIMPLE && v2_type != SIMPLE)
+      return false;
+  }
+  // At most one vertex can be a feature vertex or both are edge vertices and midpoint is okay now
 
   // Gather neighbors (excluding each other)
   std::set<int> n1 = get_all_neighbors_from_vertex(v1);
@@ -1244,7 +1400,7 @@ Mesh_modifier_uniform_remeshing::mark_feature_edges_and_vertices()
       face_normals[f] = Eigen::Vector3d(0, 0, 1); // Degenerate fallback
     }
   }
-  
+
 
   const int n_half_edges = mesh().n_total_half_edges();
   const int n_vertices = mesh().n_total_vertices();
@@ -1295,7 +1451,7 @@ Mesh_modifier_uniform_remeshing::mark_feature_edges_and_vertices()
   // Classify vertices based on incident feature edges
   for(int v_idx = 0; v_idx < n_vertices; ++v_idx)
   {
-    if (!mesh().vertex_at(v_idx).is_active())
+    if(!mesh().vertex_at(v_idx).is_active())
       continue; // Skip inactive vertices
     _vertex_feature_type[v_idx] = classify_vertex_feature_type(v_idx);
   }
@@ -1305,34 +1461,33 @@ Mesh_modifier_uniform_remeshing::mark_feature_edges_and_vertices()
 Mesh_modifier_uniform_remeshing::VertexFeatureType
 Mesh_modifier_uniform_remeshing::classify_vertex_feature_type(int v_idx)
 {
-    // Count incoming feature edges
-    auto ring = _m.vertex_ring_at(v_idx);
-    int feature_edge_count = 0;
-    do{
-      auto he = ring.half_edge();
-      if(_is_feature_edge[he.index()])
-        feature_edge_count++;
-    } while(ring.advance());
+  // Count incoming feature edges
+  auto ring = _m.vertex_ring_at(v_idx);
+  int feature_edge_count = 0;
+  do
+  {
+    auto he = ring.half_edge();
+    if(_is_feature_edge[he.index()])
+      feature_edge_count++;
+  } while(ring.advance());
 
-    if(feature_edge_count == 0)
-    {
-      return SIMPLE;
-    }
-    else if(feature_edge_count == 1)
-    {
-      return CORNER;
-    }
-    else if(feature_edge_count == 2)
-    {
-      return EDGE;
-    }
-    else
-    {
-      return CORNER;
-    }
+  if(feature_edge_count == 0)
+  {
+    return SIMPLE;
+  }
+  else if(feature_edge_count == 1)
+  {
+    return CORNER;
+  }
+  else if(feature_edge_count == 2)
+  {
+    return EDGE;
+  }
+  else
+  {
+    return CORNER;
+  }
 }
-
-
 
 
 

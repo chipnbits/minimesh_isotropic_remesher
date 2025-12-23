@@ -81,19 +81,27 @@ public:
   const int INTERIOR_VALENCE = 6;
   const int BOUNDARY_VALENCE = 4;
   const double EDGE_FLIP_THRESHOLD_DOT = 0.7; // Cosine of angle threshold for normal deviation check
-  const double LAMBDA_SMOOTHING_DAMPING = 0.2; // Damping factor for vertex smoothing
+  const double LAMBDA_SMOOTHING_DAMPING = 0.7; // Damping factor for vertex smoothing
   const int N_SMOOTHING_ITERS = 5; // Number of smoothing iterations
 
   // Feature edges
-  const double FEATURE_ANGLE_DEGREES = 60.0; // Degrees
+  const double FEATURE_ANGLE_DEGREES = 45.0; // Degrees
   const double FEATURE_ANGLE_COSINE = cos(FEATURE_ANGLE_DEGREES * M_PI / 180.0);
-
-  // edge collapse checks
-  const double MIN_ANGLE_COSINE = 0.173648; // Cosine of 80 degrees
-  const double MIN_DIHEDRAL = -0.5; // Cosine of 120 degrees
 
   std::vector<bool> _is_feature_edge;
   std::vector<VertexFeatureType> _vertex_feature_type;
+  void ensure_property_containers_size() {
+    const std::size_t n_vertices =
+      static_cast<std::size_t>(mesh().n_total_vertices());
+    const std::size_t n_half_edges =
+      static_cast<std::size_t>(mesh().n_total_half_edges());
+    if (n_vertices > _vertex_feature_type.size()) {
+      _vertex_feature_type.resize(mesh().n_total_vertices(), SIMPLE);
+    }
+    if (n_half_edges > _is_feature_edge.size()) {
+      _is_feature_edge.resize(mesh().n_total_half_edges(), false);
+    }
+  }
 
   // ============================================================
   // Core Remeshing Operations
