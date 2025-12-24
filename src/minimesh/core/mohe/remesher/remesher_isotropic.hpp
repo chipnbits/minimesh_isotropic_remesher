@@ -1,9 +1,6 @@
 // Implementation of Uniform Explicit Isotropic Remeshing
-// Based on Botsch and Kobbelt (2004)
-//
-// Project Part 1: Baseline remeshing algorithm
-//
-
+// Based on Botsch and Kobbelt (2004) with additions from 
+// Tanja Munz Thesis (2015)
 #pragma once
 
 #include <Eigen/Core>
@@ -28,8 +25,8 @@ public:
 
   enum class SmoothingType
   {
-    Uniform, // Simple barycenter of neighbors (Isotropic)
-    Barycenters // Area-weighted or CVT (Centroidal Voronoi) approximation
+    Uniform, // simple averaging of neighbors
+    Barycenters // move to area weighted barycenter of incident faces
   };
 
   // Figure 3.14 https://nccastaff.bournemouth.ac.uk/jmacey/MastersProject/MSc15/08Tanja/
@@ -56,10 +53,10 @@ public:
   Mesh_connectivity & mesh() { return _m; }
   const Mesh_connectivity & mesh() const { return _m; }
 
-  // Initialize the remesher - marks feature edges and vertices
+  // Initialize the remesher - classifies feature edges and vertices for feature preservation
   void initialize();
 
-  // Getters for feature lists
+  // Getters for feature lists to link to external display API
   const std::vector<bool>& get_feature_edges() const { return _is_feature_edge; }
   const std::vector<VertexFeatureType>& get_vertex_feature_types() const { return _vertex_feature_type; }
 
@@ -72,9 +69,6 @@ public:
   // ============================================================
 
   // Automatic isotropic remeshing to target edge length
-  // Params:
-  //   target_edge_length: The uniform global target length (L)
-  //   iterations: Number of times to run the split/collapse/flip/smooth loop
   void remesh(double target_edge_length, int iterations = 5);
 
   // Single pass of remeshing operations (for use with GUI or custom loops)
@@ -90,17 +84,23 @@ public:
   // pointer to the mesh that we are working on.
   Mesh_connectivity & _m;
 
+  // Number of tangential smoothing iterations per remeshing pass
+  const int N_SMOOTHING_ITERS = 2; // Number of smoothing iterations
+
+  // From Botsch & Kobbelt (2004)
   const int INTERIOR_VALENCE = 6;
   const int BOUNDARY_VALENCE = 4;
-  const double EDGE_FLIP_THRESHOLD_DOT = 0.9; // Cosine of angle threshold for normal deviation check - low for tighter control
   const double LAMBDA_SMOOTHING_DAMPING = 0.4; // Damping factor for vertex smoothing
-  const int N_SMOOTHING_ITERS = 2; // Number of smoothing iterations
+
+  // Geometric hold-backs for edge flips and collapses
+  const double EDGE_FLIP_THRESHOLD_DOT = 0.9; // Cosine of angle threshold for normal deviation check - low for tighter control
   const double UNCOLLAPSE_THRESHOLD_FACTOR = 1.3; // Factor to prevent uncollapsing recently collapsed edges (1.2 default and lower prevents uncollapse)
 
-  // Feature edges
+  // Feature edge detection cutoffs
   const double FEATURE_ANGLE_DEGREES = 25; // Degrees
   const double FEATURE_ANGLE_COSINE = cos(FEATURE_ANGLE_DEGREES * M_PI / 180.0);
 
+  // Property containers
   std::vector<bool> _is_feature_edge;
   std::vector<VertexFeatureType> _vertex_feature_type;
   std::vector<double> _face_min_angles;  // Indexed by face index, stores min angle in radians
@@ -133,15 +133,13 @@ public:
 
   //
   // 3. Edge Flipping
-  // Flips edges to improve vertex valence towards the ideal value 4-boundary, 6-internal.
+  // Flips edges to improve vertex valence towards the ideal values listed above.
   void flip_edges_to_optimize_valence();
 
   //
   // 4. Vertex Smoothing
-  // Applies tangential smoothing to redistribute vertices for better mesh quality.
-  // Usually involves moving vertex toward the centroid of its neighbors,
-  // then projecting back to the tangent plane (or original surface if available).
-  //
+  // Applies tangential smoothing to redistribute vertices for better mesh quality. 
+  // Respects feature vertices and moves tangential to vertex normals.
   void tangential_smoothing(int smoothing_iters = 1, SmoothingType type = SmoothingType::Barycenters);
 
   // ============================================================
@@ -164,14 +162,10 @@ public:
   // Helpers & Topology Checks
   // ============================================================
 
-  // Returns the Euclidean length of the edge associated with the half-edge
   double get_edge_length(int he_index) const;
-
-  // Calculates the valence (degree) of a vertex
   int get_vertex_valence(int v_index) const;
 
-  // Calculates the deviation of valence from ideal (6 for internal, 4 for boundary)
-  // Used by flip_edges_to_optimize_valence
+  // Calculates the deviation of valence from ideal vals
   int get_valence_deviation(int v_index) const;
 
   // Determines if flipping the edge would improve valence deviation
@@ -183,17 +177,16 @@ public:
   // Check edge flip legality according to Botsch & Kobbelt criteria
   bool is_legal_flip(int he_index);
 
-
   // Helper to get all neighbors of a vertex as a set (for collapse legality checks)
   std::set<int> get_all_neighbors_from_vertex(int v_index) const;
 
   // Helper to relabel all half-edges originating from old_id to new_id
   void relabel_vertex(int old_id, int new_id);
 
-  // Helper to find specific half-edge between vertices (reused from your sample)
+  // Helper to find specific half-edge between vertices
   int get_halfedge_between_vertices(const int v0, const int v1);
 
-  // Helper to get all neighbors of a vertex (for smoothing and checks)
+  // Helper to get all neighbors of a vertex 
   std::vector<int> get_one_ring_neighbors(int v_index) const;
 
   // Compute a surface normal given three points in ccw cycle order

@@ -151,7 +151,6 @@ Mesh_modifier_uniform_remeshing::remesh_to_target_edge_count(int target_edge_cou
       }
     }
 
-
     current_L = next_target_L;
   }
 
@@ -188,7 +187,10 @@ Mesh_modifier_uniform_remeshing::remesh_to_target_vertex_count(int target_vertex
 
   double early_termination_seen = false;
 
-  printf("Targeting %d vertices. Starting with %d vertices, Avg L = %f\n", target_vertex_count, active_vertices, current_L);
+  printf("Targeting %d vertices. Starting with %d vertices, Avg L = %f\n",
+      target_vertex_count,
+      active_vertices,
+      current_L);
 
   for(int i = 0; i < iterations; ++i)
   {
@@ -233,7 +235,7 @@ Mesh_modifier_uniform_remeshing::remesh_to_target_vertex_count(int target_vertex
         active_vertices,
         target_vertex_count,
         current_L,
-        next_target_L); 
+        next_target_L);
     run_single_pass(next_target_L, N_SMOOTHING_ITERS);
     for(int v = 0; v < mesh().n_total_vertices(); ++v)
     {
@@ -394,7 +396,7 @@ Mesh_modifier_uniform_remeshing::tangential_smoothing(int smoothing_iters, Smoot
       //   // Skip movement along edge for now
       // }
 
-      if (vt == EDGE)
+      if(vt == EDGE)
       {
         // 1. Collect the two feature neighbors
         std::vector<Eigen::Vector3d> n_pos;
@@ -403,72 +405,73 @@ Mesh_modifier_uniform_remeshing::tangential_smoothing(int smoothing_iters, Smoot
         auto ring = _m.vertex_ring_at(vi);
         do
         {
-            int he_idx = ring.half_edge().index();
-            if(_is_feature_edge[he_idx])
-            {
-                n_pos.push_back(ring.half_edge().origin().xyz());
-                n_indices.push_back(ring.half_edge().origin().index());
-            }
+          int he_idx = ring.half_edge().index();
+          if(_is_feature_edge[he_idx])
+          {
+            n_pos.push_back(ring.half_edge().origin().xyz());
+            n_indices.push_back(ring.half_edge().origin().index());
+          }
         } while(ring.advance());
 
         // We expect exactly 2 neighbors for a feature EDGE vertex
         if(n_pos.size() == 2)
         {
-            Eigen::Vector3d p = vert.xyz();
-            Eigen::Vector3d n0 = n_pos[0];
-            Eigen::Vector3d n1 = n_pos[1];
+          Eigen::Vector3d p = vert.xyz();
+          Eigen::Vector3d n0 = n_pos[0];
+          Eigen::Vector3d n1 = n_pos[1];
 
-            // 2. Calculate Weighted Lengths (Metric Space)
-            // We divide Euclidean length by sizing field: Higher Sizing = Longer edges allowed.
-            // We want: len0 / size0  ==  len1 / size1
-            
-            double size_here = adaptive_sizing_field[vi];
-            double size0 = (adaptive_sizing_field[n_indices[0]] + size_here) * 0.5;
-            double size1 = (adaptive_sizing_field[n_indices[1]] + size_here) * 0.5;
+          // 2. Calculate Weighted Lengths (Metric Space)
+          // We divide Euclidean length by sizing field: Higher Sizing = Longer edges allowed.
+          // We want: len0 / size0  ==  len1 / size1
 
-            double len0 = (n0 - p).norm();
-            double len1 = (n1 - p).norm();
+          double size_here = adaptive_sizing_field[vi];
+          double size0 = (adaptive_sizing_field[n_indices[0]] + size_here) * 0.5;
+          double size1 = (adaptive_sizing_field[n_indices[1]] + size_here) * 0.5;
 
-            double metric_len0 = len0 / size0;
-            double metric_len1 = len1 / size1;
+          double len0 = (n0 - p).norm();
+          double len1 = (n1 - p).norm();
 
-            // 3. Slide vertex along the incident edge to equalize metric lengths
-            // If metric_len0 > metric_len1, n0 is "too far". Slide towards n0.
-            
-            Eigen::Vector3d move_dir(0,0,0);
-            double imbalance = 0.0;
+          double metric_len0 = len0 / size0;
+          double metric_len1 = len1 / size1;
 
-            if (metric_len0 > metric_len1)
-            {
-                move_dir = (n0 - p).normalized(); // Slide towards n0
-                imbalance = metric_len0 - metric_len1;
-            }
-            else
-            {
-                move_dir = (n1 - p).normalized(); // Slide towards n1
-                imbalance = metric_len1 - metric_len0;
-            }
+          // 3. Slide vertex along the incident edge to equalize metric lengths
+          // If metric_len0 > metric_len1, n0 is "too far". Slide towards n0.
 
-            // Apply movement
-            // Scale the move so we don't jump too far (Relaxation step)
-            // Converting metric imbalance back to Euclidean approximation for the step size
-            double step_size = imbalance * size_here * 0.5 * LAMBDA_SMOOTHING_DAMPING;
-            
-            // Safety: Don't move past the neighbor (prevent tangling)
-            double max_dist = (metric_len0 > metric_len1) ? len0 : len1;
-            if(step_size > max_dist * 0.4) step_size = max_dist * 0.4;
+          Eigen::Vector3d move_dir(0, 0, 0);
+          double imbalance = 0.0;
 
-            new_pos[vi] = p + move_dir * step_size;
-            needs_update[vi] = true;
+          if(metric_len0 > metric_len1)
+          {
+            move_dir = (n0 - p).normalized(); // Slide towards n0
+            imbalance = metric_len0 - metric_len1;
+          }
+          else
+          {
+            move_dir = (n1 - p).normalized(); // Slide towards n1
+            imbalance = metric_len1 - metric_len0;
+          }
+
+          // Apply movement
+          // Scale the move so we don't jump too far (Relaxation step)
+          // Converting metric imbalance back to Euclidean approximation for the step size
+          double step_size = imbalance * size_here * 0.5 * LAMBDA_SMOOTHING_DAMPING;
+
+          // Safety: Don't move past the neighbor (prevent tangling)
+          double max_dist = (metric_len0 > metric_len1) ? len0 : len1;
+          if(step_size > max_dist * 0.4)
+            step_size = max_dist * 0.4;
+
+          new_pos[vi] = p + move_dir * step_size;
+          needs_update[vi] = true;
         }
         else
         {
-            // Corner case (endpoints of wires) or non-manifold
-            new_pos[vi] = vert.xyz();
+          // Corner case (endpoints of wires) or non-manifold
+          new_pos[vi] = vert.xyz();
         }
-        
+
         continue; // Done with EDGE vertex
-    }
+      }
       // ==========================
       // Simple non-FeatureCase: SMOOTH vertex
       // ==========================
@@ -746,7 +749,6 @@ Mesh_modifier_uniform_remeshing::split_edge(int he_index, double weight)
   {
     // New vertex is feature if original
     _vertex_feature_type[v5.index()] = EDGE;
-
   }
   else
   {
@@ -773,7 +775,7 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index, double threshold)
   VertexFeatureType t1 = _vertex_feature_type[v1];
   VertexFeatureType t2 = _vertex_feature_type[v2];
 
-  if (t1 == CORNER || t2 == CORNER)
+  if(t1 == CORNER || t2 == CORNER)
   {
     // Do not collapse using corners
     return false;
@@ -781,12 +783,14 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index, double threshold)
 
   if(v1_boundary && !v2_boundary)
   {
-    if(t2 == EDGE) return false;
+    if(t2 == EDGE)
+      return false;
     new_pos = v1_iter.xyz(); // Keep v1 where it is
   }
   else if(!v1_boundary && v2_boundary)
   {
-    if(t1 == EDGE) return false;
+    if(t1 == EDGE)
+      return false;
     new_pos = v2_iter.xyz(); // Snap v1 to v2's position
   }
   else
@@ -822,34 +826,34 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index, double threshold)
 
   // Abort if hole is complicating the collapse
   if(!top_is_hole && !bot_is_hole)
-    {
-        auto n1 = he_v1_v2.next().twin().face();
-        auto n2 = he_v2_v1.prev().twin().face();
+  {
+    auto n1 = he_v1_v2.next().twin().face();
+    auto n2 = he_v2_v1.prev().twin().face();
 
-        if(n1.is_equal(mesh().hole()) || n2.is_equal(mesh().hole()))
-        {
-            return false; // ABORT: Neighbor is a hole, too risky.
-        }
-    }
-
-    // Abort for other cases involving holes
-    if(!top_is_hole && bot_is_hole)
+    if(n1.is_equal(mesh().hole()) || n2.is_equal(mesh().hole()))
     {
-        auto n1 = he_v1_v2.next().twin().face();
-        if(n1.is_equal(mesh().hole()))
-        {
-            return false; // ABORT: Neighbor is a hole, too risky.
-        }
+      return false; // ABORT: Neighbor is a hole, too risky.
     }
+  }
 
-    if(top_is_hole && !bot_is_hole)
+  // Abort for other cases involving holes
+  if(!top_is_hole && bot_is_hole)
+  {
+    auto n1 = he_v1_v2.next().twin().face();
+    if(n1.is_equal(mesh().hole()))
     {
-        auto n2 = he_v2_v1.prev().twin().face();
-        if(n2.is_equal(mesh().hole()))
-        {
-            return false; // ABORT: Neighbor is a hole, too risky.
-        }
+      return false; // ABORT: Neighbor is a hole, too risky.
     }
+  }
+
+  if(top_is_hole && !bot_is_hole)
+  {
+    auto n2 = he_v2_v1.prev().twin().face();
+    if(n2.is_equal(mesh().hole()))
+    {
+      return false; // ABORT: Neighbor is a hole, too risky.
+    }
+  }
 
 
   // Remap all half-edges originating from v2 to originate from v1
@@ -877,9 +881,9 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index, double threshold)
     bool top_victim_feature = _is_feature_edge[he_v1_v2.next().index()];
     if(top_victim_feature)
     {
-        // Transfer feature status to the surviving edge and its twin
-        _is_feature_edge[he_f1_associate.index()] = true;
-        _is_feature_edge[he_f1_associate.twin().index()] = true;
+      // Transfer feature status to the surviving edge and its twin
+      _is_feature_edge[he_f1_associate.index()] = true;
+      _is_feature_edge[he_f1_associate.twin().index()] = true;
     }
 
     // Bottom Face (f2): v2 -> v1 -> BotVert -> v2
@@ -888,9 +892,9 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index, double threshold)
     bool bot_victim_feature = _is_feature_edge[he_v2_v1.prev().index()];
     if(bot_victim_feature)
     {
-        // Transfer feature status to the surviving edge and its twin
-        _is_feature_edge[he_f2_associate.index()] = true;
-        _is_feature_edge[he_f2_associate.twin().index()] = true;
+      // Transfer feature status to the surviving edge and its twin
+      _is_feature_edge[he_f2_associate.index()] = true;
+      _is_feature_edge[he_f2_associate.twin().index()] = true;
     }
 
     face_top.deactivate();
@@ -994,8 +998,8 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index, double threshold)
     bool top_victim_feature = _is_feature_edge[he_v1_v2.next().index()];
     if(top_victim_feature)
     {
-        _is_feature_edge[he_f1_associate.index()] = true;
-        _is_feature_edge[he_f1_associate.twin().index()] = true;
+      _is_feature_edge[he_f1_associate.index()] = true;
+      _is_feature_edge[he_f1_associate.twin().index()] = true;
     }
 
     face_top.deactivate();
@@ -1052,8 +1056,8 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index, double threshold)
     bool bot_victim_feature = _is_feature_edge[he_v2_v1.prev().index()];
     if(bot_victim_feature)
     {
-        _is_feature_edge[he_f2_associate.index()] = true;
-        _is_feature_edge[he_f2_associate.twin().index()] = true;
+      _is_feature_edge[he_f2_associate.index()] = true;
+      _is_feature_edge[he_f2_associate.twin().index()] = true;
     }
 
     face_bottom.deactivate();
@@ -1433,55 +1437,65 @@ Mesh_modifier_uniform_remeshing::is_legal_collapse(int v1, int v2, Eigen::Vector
 
   // --- Requirement B: Normal Flip / Intersection Check ---
   // Check face normals of the one-ring of v1 and v2 before and after the hypothetical collapse.
-  
+
   // Lambda to check one vertex's neighbors
-  auto simulate_normal_flip = [&](int v_idx, const Eigen::Vector3d& new_pos) -> bool {
-      auto ring = _m.vertex_ring_at(v_idx);
-      do {
-          auto he = ring.half_edge();
-          auto face = he.face();
-          auto f1 = he.face();
-          auto f2 = he.twin().face();
-          
-          // Skip the faces adjacent to the edge being collapsed (they will disappear)
-          if (face.is_equal(f1) || face.is_equal(f2)) {
-            continue;
-          }
+  auto simulate_normal_flip = [&](int v_idx, const Eigen::Vector3d & new_pos) -> bool
+  {
+    auto ring = _m.vertex_ring_at(v_idx);
+    do
+    {
+      auto he = ring.half_edge();
+      auto face = he.face();
+      auto f1 = he.face();
+      auto f2 = he.twin().face();
 
-          // Get vertices of the triangle
-          int v_curr = he.origin().index();
-          int v_next = he.next().origin().index();
-          int v_prev = he.prev().origin().index();
+      // Skip the faces adjacent to the edge being collapsed (they will disappear)
+      if(face.is_equal(f1) || face.is_equal(f2))
+      {
+        continue;
+      }
 
-          // Compute Old Normal
-          Eigen::Vector3d pA = mesh().vertex_at(v_curr).xyz();
-          Eigen::Vector3d pB = mesh().vertex_at(v_next).xyz();
-          Eigen::Vector3d pC = mesh().vertex_at(v_prev).xyz();
-          Eigen::Vector3d n_old = (pB - pA).cross(pC - pA).normalized();
+      // Get vertices of the triangle
+      int v_curr = he.origin().index();
+      int v_next = he.next().origin().index();
+      int v_prev = he.prev().origin().index();
 
-          // Compute New Normal: Replace v1 or v2 with p_new
-          if (v_curr == v1 || v_curr == v2) pA = new_pos;
-          if (v_next == v1 || v_next == v2) pB = new_pos;
-          if (v_prev == v1 || v_prev == v2) pC = new_pos;
+      // Compute Old Normal
+      Eigen::Vector3d pA = mesh().vertex_at(v_curr).xyz();
+      Eigen::Vector3d pB = mesh().vertex_at(v_next).xyz();
+      Eigen::Vector3d pC = mesh().vertex_at(v_prev).xyz();
+      Eigen::Vector3d n_old = (pB - pA).cross(pC - pA).normalized();
 
-          Eigen::Vector3d n_new = (pB - pA).cross(pC - pA);
-          
-          // Check for degenerate triangle
-          if(n_new.norm() < 1e-12) return false; 
-          n_new.normalize();
+      // Compute New Normal: Replace v1 or v2 with p_new
+      if(v_curr == v1 || v_curr == v2)
+        pA = new_pos;
+      if(v_next == v1 || v_next == v2)
+        pB = new_pos;
+      if(v_prev == v1 || v_prev == v2)
+        pC = new_pos;
 
-          // Botsch et al. suggest checking that the normal doesn't flip more than 90 degrees (dot < 0)
-          // A safer threshold is usually 0.2 to keep triangles somewhat regular.
-          if (n_old.dot(n_new) < 0.2) { 
-              return false; 
-          }
+      Eigen::Vector3d n_new = (pB - pA).cross(pC - pA);
 
-      } while (ring.advance());
-      return true;
+      // Check for degenerate triangle
+      if(n_new.norm() < 1e-10)
+        return false;
+      n_new.normalize();
+
+      // Botsch et al. suggest checking that the normal doesn't flip more than 90 degrees (dot < 0)
+      // A safer threshold is usually 0.2 to keep triangles somewhat regular.
+      if(n_old.dot(n_new) < 0.2)
+      {
+        return false;
+      }
+
+    } while(ring.advance());
+    return true;
   };
 
-  if (!simulate_normal_flip(v1, new_pos)) return false;
-  if (!simulate_normal_flip(v2, new_pos)) return false;
+  if(!simulate_normal_flip(v1, new_pos))
+    return false;
+  if(!simulate_normal_flip(v2, new_pos))
+    return false;
 
   return true;
 }
@@ -1797,6 +1811,7 @@ Mesh_modifier_uniform_remeshing::mark_feature_edges_and_vertices()
   return;
 }
 
+// Classification helper
 Mesh_modifier_uniform_remeshing::VertexFeatureType
 Mesh_modifier_uniform_remeshing::classify_vertex_feature_type(int v_idx)
 {
