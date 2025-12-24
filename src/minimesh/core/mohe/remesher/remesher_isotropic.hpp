@@ -95,6 +95,7 @@ public:
   const double EDGE_FLIP_THRESHOLD_DOT = 0.9; // Cosine of angle threshold for normal deviation check - low for tighter control
   const double LAMBDA_SMOOTHING_DAMPING = 0.4; // Damping factor for vertex smoothing
   const int N_SMOOTHING_ITERS = 2; // Number of smoothing iterations
+  const double UNCOLLAPSE_THRESHOLD_FACTOR = 1.3; // Factor to prevent uncollapsing recently collapsed edges (1.2 default and lower prevents uncollapse)
 
   // Feature edges
   const double FEATURE_ANGLE_DEGREES = 25; // Degrees

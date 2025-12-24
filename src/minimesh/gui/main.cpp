@@ -1030,7 +1030,7 @@ main(int argc, char * argv[])
       &globalvars::target_edge_length);
   spinner_edge_length->set_alignment(GLUI_ALIGN_CENTER);
   spinner_edge_length->set_w(300);
-  spinner_edge_length->set_float_limits(0.001f, 1.0f);
+  spinner_edge_length->set_float_limits(0.001f, 100.0f);
   spinner_edge_length->set_speed(0.001f);
 
   // Add button to run single remeshing pass

@@ -805,7 +805,7 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index, double threshold)
       new_pos = 0.5 * (v2_iter.xyz() + v1_iter.xyz()); // Midpoint for simple-simple case
   }
 
-  if(!is_legal_collapse(v1, v2, new_pos, (5.0/4.0)*threshold))
+  if(!is_legal_collapse(v1, v2, new_pos, UNCOLLAPSE_THRESHOLD_FACTOR * threshold))
     return false;
 
 
@@ -820,6 +820,38 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index, double threshold)
   bool top_is_hole = face_top.is_equal(mesh().hole());
   bool bot_is_hole = face_bottom.is_equal(mesh().hole());
 
+  // Abort if hole is complicating the collapse
+  if(!top_is_hole && !bot_is_hole)
+    {
+        auto n1 = he_v1_v2.next().twin().face();
+        auto n2 = he_v2_v1.prev().twin().face();
+
+        if(n1.is_equal(mesh().hole()) || n2.is_equal(mesh().hole()))
+        {
+            return false; // ABORT: Neighbor is a hole, too risky.
+        }
+    }
+
+    // Abort for other cases involving holes
+    if(!top_is_hole && bot_is_hole)
+    {
+        auto n1 = he_v1_v2.next().twin().face();
+        if(n1.is_equal(mesh().hole()))
+        {
+            return false; // ABORT: Neighbor is a hole, too risky.
+        }
+    }
+
+    if(top_is_hole && !bot_is_hole)
+    {
+        auto n2 = he_v2_v1.prev().twin().face();
+        if(n2.is_equal(mesh().hole()))
+        {
+            return false; // ABORT: Neighbor is a hole, too risky.
+        }
+    }
+
+
   // Remap all half-edges originating from v2 to originate from v1
   relabel_vertex(v2, v1);
 
@@ -828,7 +860,6 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index, double threshold)
   {
     auto face_f1 = he_v1_v2.next().twin().face();
     auto face_f2 = he_v2_v1.prev().twin().face();
-    printf("face_f1: %d, face_f2: %d\n", face_f1.index(), face_f2.index());
     auto he_f1_associate = he_v1_v2.prev();
     auto he_f2_associate = he_v2_v1.next();
     // Get the half-edges that will need to be re-linked
