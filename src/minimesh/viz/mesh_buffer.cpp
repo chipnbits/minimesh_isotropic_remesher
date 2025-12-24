@@ -91,5 +91,13 @@ void Mesh_buffer::set_colorful_spheres(const Eigen::VectorXi & vertex_indices, c
 	spheres_colors = colors;
 }
 
+void Mesh_buffer::set_debug_edge_colors(const Eigen::VectorXi & edge_indices, const Eigen::Matrix4Xf & colors)
+{
+	force_assert(edge_indices.size() == colors.cols());
+	force_assert(edge_indices.size() == 0 || edge_indices.maxCoeff() < (int)edge_conn.cols());
+	debug_edge_indices = edge_indices;
+	debug_edge_colors = colors;
+}
+
 
 } // end of minimesh

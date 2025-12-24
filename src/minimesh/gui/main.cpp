@@ -550,6 +550,9 @@ update_remesh_feature_visualization()
     Eigen::Matrix4Xf empty_colors(4, 0);
     globalvars::viewer.get_mesh_buffer().set_colorful_spheres(empty_indices, empty_colors);
 
+    // Clear debug edges
+    globalvars::viewer.get_mesh_buffer().set_debug_edge_colors(empty_indices, empty_colors);
+
     // Clear face colors (reset to default)
     int n_active_faces = globalvars::mesh.n_active_faces();
     Eigen::Matrix4Xf face_colors(4, n_active_faces);
@@ -593,6 +596,56 @@ update_remesh_feature_visualization()
   Eigen::Matrix4Xf face_colors = angles_to_colors(min_angles, globalvars::mesh, defrag);
   globalvars::viewer.get_mesh_buffer().set_face_colors(face_colors);
 
+  // DEBUG: Visualize feature edges
+  {
+    const std::vector<bool>& is_feature_edge = globalvars::modi_remesh.get_feature_edges();
+    std::vector<int> feature_edge_indices;
+
+    // Build mapping from half-edges to edge_conn indices
+    // This mirrors the logic in mesh_buffer.cpp rebuild()
+    int edge_idx = 0;
+    for(int i = 0; i < globalvars::mesh.n_active_half_edges(); ++i)
+    {
+      int old_he_idx = defrag.new2old_half_edges[i];
+      auto he = globalvars::mesh.half_edge_at(old_he_idx);
+
+      // Only process each edge once (same logic as mesh_buffer rebuild)
+      if(he.index() > he.twin().index())
+      {
+        // Check if this half-edge OR its twin is marked as a feature edge
+        if(old_he_idx < static_cast<int>(is_feature_edge.size()) &&
+           (is_feature_edge[he.index()] || is_feature_edge[he.twin().index()]))
+        {
+          feature_edge_indices.push_back(edge_idx);
+        }
+        edge_idx++;
+      }
+    }
+
+    // Set bright cyan color for feature edges
+    if(!feature_edge_indices.empty())
+    {
+      Eigen::VectorXi edge_indices(feature_edge_indices.size());
+      Eigen::Matrix4Xf edge_colors(4, feature_edge_indices.size());
+
+      for(size_t i = 0; i < feature_edge_indices.size(); ++i)
+      {
+        edge_indices[i] = feature_edge_indices[i];
+        // Bright cyan color (R=0, G=1, B=1, A=1)
+        edge_colors.col(i) << 0.0f, 1.0f, 1.0f, 1.0f;
+      }
+
+      globalvars::viewer.get_mesh_buffer().set_debug_edge_colors(edge_indices, edge_colors);
+    }
+    else
+    {
+      // Clear debug edges
+      Eigen::VectorXi empty_indices(0);
+      Eigen::Matrix4Xf empty_colors(4, 0);
+      globalvars::viewer.get_mesh_buffer().set_debug_edge_colors(empty_indices, empty_colors);
+    }
+  }
+
   // Draw spheres on feature vertices (light blue)
   if(!feature_vertex_indices.empty())
   {
@@ -606,7 +659,7 @@ update_remesh_feature_visualization()
       sphere_colors.col(i) << 0.3f, 0.6f, 1.0f, 1.0f;
     }
 
-    globalvars::viewer.get_mesh_buffer().set_colorful_spheres(sphere_indices, sphere_colors);
+    // globalvars::viewer.get_mesh_buffer().set_colorful_spheres(sphere_indices, sphere_colors);
   }
   else
   {
@@ -793,10 +846,29 @@ main(int argc, char * argv[])
   // Remember current folder
   foldertools::pushd();
 
+  // Check for --isometric flag
+  bool use_isometric_view = false;
+  std::string mesh_filename;
+
+  // Parse command line arguments
+  for(int i = 1; i < argc; ++i)
+  {
+    std::string arg = argv[i];
+    if(arg == "--isometric")
+    {
+      use_isometric_view = true;
+      printf("Isometric view mode enabled\n");
+    }
+    else if(arg[0] != '-')
+    {
+      mesh_filename = arg;
+    }
+  }
+
   // If no command line argument is specified, load a hardcoded mesh.e
   // Useful when debugging with visual studio.
   // Change the hardcoded address to your needs.
-  if(argc == 1)
+  if(mesh_filename.empty())
   {
     // retrieve filepath of /home/sghys/projects/CPSC524-modeling/mesh/tetra_complex.obj
 
@@ -804,7 +876,7 @@ main(int argc, char * argv[])
   }
   else // otherwise use the address specified in the command line
   {
-    mohecore::Mesh_io(globalvars::mesh).read_auto(argv[1]);
+    mohecore::Mesh_io(globalvars::mesh).read_auto(mesh_filename);
   }
 
   // Initialize GLUT window
@@ -837,6 +909,12 @@ main(int argc, char * argv[])
     }
   }
   globalvars::viewer.initialize(bbox);
+
+  // Set isometric view if requested
+  if(use_isometric_view)
+  {
+    globalvars::viewer.set_isometric_view();
+  }
 
   // Load the mesh in the viewer
   {

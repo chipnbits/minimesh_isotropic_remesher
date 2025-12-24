@@ -45,6 +45,11 @@ public:
 	// colors:         Colors for each sphere 4 (RGBA) * number_of_spheres
 	void set_colorful_spheres(const Eigen::VectorXi & vertex_indices, const Eigen::Matrix4Xf & colors);
 
+	// DEBUG: Draw specific edges with colors (temporary for feature edge visualization)
+	// edge_indices: Indices into edge_conn array
+	// colors:       Colors for each edge 4 (RGBA) * number_of_edges
+	void set_debug_edge_colors(const Eigen::VectorXi & edge_indices, const Eigen::Matrix4Xf & colors);
+
 private:
 	// The vertices of the mesh
 	Eigen::Matrix3Xf vertices;
@@ -64,7 +69,11 @@ private:
 	// Colorful balls vertex indices
 	Eigen::VectorXi spheres_vertex_indices;
 	Eigen::Matrix4Xf spheres_colors;
-	
+
+	// DEBUG: Colorful edge indices and colors (temporary for feature edge visualization)
+	Eigen::VectorXi debug_edge_indices;
+	Eigen::Matrix4Xf debug_edge_colors;
+
 	friend class Mesh_viewer;
 };
 

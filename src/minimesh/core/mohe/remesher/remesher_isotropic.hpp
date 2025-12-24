@@ -63,8 +63,12 @@ public:
   const std::vector<bool>& get_feature_edges() const { return _is_feature_edge; }
   const std::vector<VertexFeatureType>& get_vertex_feature_types() const { return _vertex_feature_type; }
 
+  // Compute and get minimal angles per face (for quality visualization)
+  void compute_face_min_angles();
+  const std::vector<double>& get_face_min_angles() const { return _face_min_angles; }
+
   // ============================================================
-  // Main Remeshing Functions 
+  // Main Remeshing Functions
   // ============================================================
 
   // Automatic isotropic remeshing to target edge length
@@ -88,16 +92,17 @@ public:
 
   const int INTERIOR_VALENCE = 6;
   const int BOUNDARY_VALENCE = 4;
-  const double EDGE_FLIP_THRESHOLD_DOT = 0.7; // Cosine of angle threshold for normal deviation check
-  const double LAMBDA_SMOOTHING_DAMPING = 0.7; // Damping factor for vertex smoothing
-  const int N_SMOOTHING_ITERS = 5; // Number of smoothing iterations
+  const double EDGE_FLIP_THRESHOLD_DOT = 0.9; // Cosine of angle threshold for normal deviation check - low for tighter control
+  const double LAMBDA_SMOOTHING_DAMPING = 0.4; // Damping factor for vertex smoothing
+  const int N_SMOOTHING_ITERS = 2; // Number of smoothing iterations
 
   // Feature edges
-  const double FEATURE_ANGLE_DEGREES = 45.0; // Degrees
+  const double FEATURE_ANGLE_DEGREES = 25; // Degrees
   const double FEATURE_ANGLE_COSINE = cos(FEATURE_ANGLE_DEGREES * M_PI / 180.0);
 
   std::vector<bool> _is_feature_edge;
   std::vector<VertexFeatureType> _vertex_feature_type;
+  std::vector<double> _face_min_angles;  // Indexed by face index, stores min angle in radians
   void ensure_property_containers_size() {
     const std::size_t n_vertices =
       static_cast<std::size_t>(mesh().n_total_vertices());
@@ -172,7 +177,7 @@ public:
   bool should_flip_edge(int he_index);
 
   // Checks edge collapse legality according to Botsch & Kobbelt criteri and length threshold
-  bool is_legal_collapse(int v1, int v2, double threshold);
+  bool is_legal_collapse(int v1, int v2, Eigen::Vector3d new_pos, double threshold);
 
   // Check edge flip legality according to Botsch & Kobbelt criteria
   bool is_legal_flip(int he_index);
