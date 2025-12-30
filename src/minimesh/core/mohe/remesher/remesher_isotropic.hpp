@@ -16,8 +16,19 @@ namespace mohecore
 class Mesh_modifier_uniform_remeshing
 {
 public:
-  Mesh_modifier_uniform_remeshing(Mesh_connectivity & mesh_in)
-  : _m(mesh_in)
+  Mesh_modifier_uniform_remeshing(Mesh_connectivity & mesh_in,
+                                   int n_smoothing_iters = 2,
+                                   double lambda_smoothing = 0.4,
+                                   double edge_flip_threshold = 0.8,
+                                   double uncollapse_factor = 1.3,
+                                   double feature_angle_deg = 25.0)
+  : _m(mesh_in),
+    _n_smoothing_iters(n_smoothing_iters),
+    _lambda_smoothing_damping(lambda_smoothing),
+    _edge_flip_threshold_dot(edge_flip_threshold),
+    _uncollapse_threshold_factor(uncollapse_factor),
+    _feature_angle_degrees(feature_angle_deg),
+    _feature_angle_cosine(cos(feature_angle_deg * M_PI / 180.0))
   {
     // run initialization
     initialize();
@@ -60,6 +71,26 @@ public:
   const std::vector<bool>& get_feature_edges() const { return _is_feature_edge; }
   const std::vector<VertexFeatureType>& get_vertex_feature_types() const { return _vertex_feature_type; }
 
+  // Getters and setters for configurable parameters
+  int get_n_smoothing_iters() const { return _n_smoothing_iters; }
+  void set_n_smoothing_iters(int value) { _n_smoothing_iters = value; }
+
+  double get_lambda_smoothing_damping() const { return _lambda_smoothing_damping; }
+  void set_lambda_smoothing_damping(double value) { _lambda_smoothing_damping = value; }
+
+  double get_edge_flip_threshold_dot() const { return _edge_flip_threshold_dot; }
+  void set_edge_flip_threshold_dot(double value) { _edge_flip_threshold_dot = value; }
+
+  double get_uncollapse_threshold_factor() const { return _uncollapse_threshold_factor; }
+  void set_uncollapse_threshold_factor(double value) { _uncollapse_threshold_factor = value; }
+
+  double get_feature_angle_degrees() const { return _feature_angle_degrees; }
+  void set_feature_angle_degrees(double value)
+  {
+    _feature_angle_degrees = value;
+    _feature_angle_cosine = cos(value * M_PI / 180.0);
+  }
+
   // Compute and get minimal angles per face (for quality visualization)
   void compute_face_min_angles();
   const std::vector<double>& get_face_min_angles() const { return _face_min_angles; }
@@ -84,21 +115,25 @@ public:
   // pointer to the mesh that we are working on.
   Mesh_connectivity & _m;
 
-  // Number of tangential smoothing iterations per remeshing pass
-  const int N_SMOOTHING_ITERS = 2; // Number of smoothing iterations
+  // Default parameter values (const, used as defaults)
+  static constexpr int N_SMOOTHING_ITERS = 2;
+  static constexpr int INTERIOR_VALENCE = 6;
+  static constexpr int BOUNDARY_VALENCE = 4;
+  static constexpr double LAMBDA_SMOOTHING_DAMPING = 0.4;
+  static constexpr double EDGE_FLIP_THRESHOLD_DOT = 0.8;
+  static constexpr double UNCOLLAPSE_THRESHOLD_FACTOR = 1.3;
+  static constexpr double FEATURE_ANGLE_DEGREES = 25.0;
 
-  // From Botsch & Kobbelt (2004)
-  const int INTERIOR_VALENCE = 6;
-  const int BOUNDARY_VALENCE = 4;
-  const double LAMBDA_SMOOTHING_DAMPING = 0.4; // Damping factor for vertex smoothing
+private:
+  // Configurable parameter instances (set via constructor, can be changed)
+  int _n_smoothing_iters;
+  double _lambda_smoothing_damping;
+  double _edge_flip_threshold_dot;
+  double _uncollapse_threshold_factor;
+  double _feature_angle_degrees;
+  double _feature_angle_cosine;
 
-  // Geometric hold-backs for edge flips and collapses
-  const double EDGE_FLIP_THRESHOLD_DOT = 0.9; // Cosine of angle threshold for normal deviation check - low for tighter control
-  const double UNCOLLAPSE_THRESHOLD_FACTOR = 1.3; // Factor to prevent uncollapsing recently collapsed edges (1.2 default and lower prevents uncollapse)
-
-  // Feature edge detection cutoffs
-  const double FEATURE_ANGLE_DEGREES = 25; // Degrees
-  const double FEATURE_ANGLE_COSINE = cos(FEATURE_ANGLE_DEGREES * M_PI / 180.0);
+public:
 
   // Property containers
   std::vector<bool> _is_feature_edge;

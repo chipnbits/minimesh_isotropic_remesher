@@ -36,6 +36,7 @@ namespace globalvars
 {
 Mesh_viewer viewer;
 mohecore::Mesh_connectivity mesh;
+mohecore::Mesh_connectivity mesh_backup; // Backup of original mesh before remeshing
 mohecore::Mesh_modifier_uniform_remeshing modi_remesh(mesh);
 mohecore::Mesh_modifier_edge_collapse modi_edge(mesh);
 mohecore::Mesh_modifier_arap modi_arap(mesh);
@@ -56,6 +57,13 @@ int remesh_mode = 0; // Toggle state for remeshing mode (enables feature visuali
 int param_algorithm = 0; // 0 = Harmonic (Fixed), 1 = LSCM
 //
 float target_edge_length = 0.05f; // Target edge length for remeshing
+//
+// Remeshing parameters (with defaults matching the class)
+int remesh_n_smoothing = 2;
+float remesh_lambda = 0.4f;
+float remesh_edge_flip_threshold = 0.8f;
+float remesh_uncollapse_factor = 1.3f;
+float remesh_feature_angle = 25.0f;
 //
 int const DEFORMATION_INTERVAL = 10; // Throttle interval in milliseconds
 std::chrono::steady_clock::time_point last_deform_time = std::chrono::steady_clock::now();
@@ -709,7 +717,24 @@ remesh_mode_changed(int)
   // When remesh mode is toggled, update visualization
   if(globalvars::remesh_mode)
   {
-    printf("Remesh mode enabled - visualizing feature edges and vertices\n");
+    printf("Remesh mode enabled - saving mesh backup and visualizing feature edges and vertices\n");
+
+    // Save a backup of the current mesh before any remeshing operations
+    globalvars::mesh_backup.copy(globalvars::mesh);
+    printf("Mesh backup saved with %d vertices, %d faces\n",
+           globalvars::mesh_backup.n_active_vertices(),
+           globalvars::mesh_backup.n_active_faces());
+
+    // Apply current parameter values to the remesher
+    globalvars::modi_remesh.set_n_smoothing_iters(globalvars::remesh_n_smoothing);
+    globalvars::modi_remesh.set_lambda_smoothing_damping(static_cast<double>(globalvars::remesh_lambda));
+    globalvars::modi_remesh.set_edge_flip_threshold_dot(static_cast<double>(globalvars::remesh_edge_flip_threshold));
+    globalvars::modi_remesh.set_uncollapse_threshold_factor(static_cast<double>(globalvars::remesh_uncollapse_factor));
+    globalvars::modi_remesh.set_feature_angle_degrees(static_cast<double>(globalvars::remesh_feature_angle));
+
+    // Re-initialize remesher with new feature angle (this marks features with the new threshold)
+    globalvars::modi_remesh.initialize();
+    globalvars::modi_remesh.compute_face_min_angles();
 
     // Update visualization (feature lists already built at initialization)
     update_remesh_feature_visualization();
@@ -727,12 +752,84 @@ remesh_mode_changed(int)
 }
 
 void
+reset_mesh_to_backup()
+{
+  if(!globalvars::remesh_mode)
+  {
+    printf("Cannot reset: not in remesh mode\n");
+    return;
+  }
+
+  printf("Resetting mesh to backup...\n");
+
+  // Restore mesh from backup
+  globalvars::mesh.copy(globalvars::mesh_backup);
+
+  // Rebuild the viewer with the restored mesh
+  mohecore::Mesh_connectivity::Defragmentation_maps defrag;
+  globalvars::mesh.compute_defragmention_maps(defrag);
+  globalvars::viewer.get_mesh_buffer().rebuild(globalvars::mesh, defrag);
+
+  // Reset deformed positions to match restored mesh
+  globalvars::deformed_vertex_positions.resize(3, globalvars::mesh.n_total_vertices());
+  for(int i = 0; i < globalvars::mesh.n_total_vertices(); ++i)
+  {
+    globalvars::deformed_vertex_positions.col(i) = globalvars::mesh.vertex_at(i).xyz();
+  }
+
+  // Re-initialize remesher with current parameters
+  globalvars::modi_remesh.set_n_smoothing_iters(globalvars::remesh_n_smoothing);
+  globalvars::modi_remesh.set_lambda_smoothing_damping(static_cast<double>(globalvars::remesh_lambda));
+  globalvars::modi_remesh.set_edge_flip_threshold_dot(static_cast<double>(globalvars::remesh_edge_flip_threshold));
+  globalvars::modi_remesh.set_uncollapse_threshold_factor(static_cast<double>(globalvars::remesh_uncollapse_factor));
+  globalvars::modi_remesh.set_feature_angle_degrees(static_cast<double>(globalvars::remesh_feature_angle));
+  globalvars::modi_remesh.initialize();
+  globalvars::modi_remesh.compute_face_min_angles();
+
+  // Update visualization
+  update_remesh_feature_visualization();
+
+  printf("Mesh restored to backup with %d vertices, %d faces\n",
+         globalvars::mesh.n_active_vertices(),
+         globalvars::mesh.n_active_faces());
+
+  glutPostRedisplay();
+}
+
+void
+remesh_reset_button_pressed(int)
+{
+  reset_mesh_to_backup();
+}
+
+void
+remesh_parameter_changed(int)
+{
+  // When parameters change, reset mesh and reinitialize with new parameters
+  if(!globalvars::remesh_mode)
+  {
+    // If not in remesh mode, just update the parameters without resetting
+    return;
+  }
+
+  printf("Remesh parameters changed - resetting mesh and reinitializing...\n");
+  reset_mesh_to_backup();
+}
+
+void
 remesh_single_pass_pressed(int)
 {
   printf("Remesh single pass button pressed with target edge length: %.4f\n", globalvars::target_edge_length);
 
+  // Apply current parameter values to the remesher before running
+  globalvars::modi_remesh.set_n_smoothing_iters(globalvars::remesh_n_smoothing);
+  globalvars::modi_remesh.set_lambda_smoothing_damping(static_cast<double>(globalvars::remesh_lambda));
+  globalvars::modi_remesh.set_edge_flip_threshold_dot(static_cast<double>(globalvars::remesh_edge_flip_threshold));
+  globalvars::modi_remesh.set_uncollapse_threshold_factor(static_cast<double>(globalvars::remesh_uncollapse_factor));
+  // Note: Feature angle not updated here as it requires re-initialization
+
   // Run a single remeshing pass (feature lists are managed internally by the remesher)
-  globalvars::modi_remesh.run_single_pass(static_cast<double>(globalvars::target_edge_length), 5);
+  globalvars::modi_remesh.run_single_pass(static_cast<double>(globalvars::target_edge_length), globalvars::remesh_n_smoothing);
 
   printf("Single remeshing pass completed\n");
 
@@ -1032,6 +1129,66 @@ main(int argc, char * argv[])
   spinner_edge_length->set_w(300);
   spinner_edge_length->set_float_limits(0.001f, 100.0f);
   spinner_edge_length->set_speed(0.001f);
+
+  // Add parameter spinners
+  GLUI_Spinner * spinner_n_smoothing = globalvars::glui->add_spinner_to_panel(panel_remesh,
+      "N Smoothing Iterations",
+      GLUI_SPINNER_INT,
+      &globalvars::remesh_n_smoothing,
+      -1,
+      freeglutcallback::remesh_parameter_changed);
+  spinner_n_smoothing->set_alignment(GLUI_ALIGN_CENTER);
+  spinner_n_smoothing->set_w(300);
+  spinner_n_smoothing->set_int_limits(0, 20);
+
+  GLUI_Spinner * spinner_lambda = globalvars::glui->add_spinner_to_panel(panel_remesh,
+      "Lambda Smoothing",
+      GLUI_SPINNER_FLOAT,
+      &globalvars::remesh_lambda,
+      -1,
+      freeglutcallback::remesh_parameter_changed);
+  spinner_lambda->set_alignment(GLUI_ALIGN_CENTER);
+  spinner_lambda->set_w(300);
+  spinner_lambda->set_float_limits(0.0f, 1.0f);
+  spinner_lambda->set_speed(0.01f);
+
+  GLUI_Spinner * spinner_edge_flip = globalvars::glui->add_spinner_to_panel(panel_remesh,
+      "Edge Flip Threshold",
+      GLUI_SPINNER_FLOAT,
+      &globalvars::remesh_edge_flip_threshold,
+      -1,
+      freeglutcallback::remesh_parameter_changed);
+  spinner_edge_flip->set_alignment(GLUI_ALIGN_CENTER);
+  spinner_edge_flip->set_w(300);
+  spinner_edge_flip->set_float_limits(0.0f, 1.0f);
+  spinner_edge_flip->set_speed(0.01f);
+
+  GLUI_Spinner * spinner_uncollapse = globalvars::glui->add_spinner_to_panel(panel_remesh,
+      "Uncollapse Factor",
+      GLUI_SPINNER_FLOAT,
+      &globalvars::remesh_uncollapse_factor,
+      -1,
+      freeglutcallback::remesh_parameter_changed);
+  spinner_uncollapse->set_alignment(GLUI_ALIGN_CENTER);
+  spinner_uncollapse->set_w(300);
+  spinner_uncollapse->set_float_limits(0.5f, 3.0f);
+  spinner_uncollapse->set_speed(0.01f);
+
+  GLUI_Spinner * spinner_feature_angle = globalvars::glui->add_spinner_to_panel(panel_remesh,
+      "Feature Angle (degrees)",
+      GLUI_SPINNER_FLOAT,
+      &globalvars::remesh_feature_angle,
+      -1,
+      freeglutcallback::remesh_parameter_changed);
+  spinner_feature_angle->set_alignment(GLUI_ALIGN_CENTER);
+  spinner_feature_angle->set_w(300);
+  spinner_feature_angle->set_float_limits(0.0f, 180.0f);
+  spinner_feature_angle->set_speed(1.0f);
+
+  // Add reset button
+  GLUI_Button * button_remesh_reset =
+      globalvars::glui->add_button_to_panel(panel_remesh, "Reset Mesh", -1, freeglutcallback::remesh_reset_button_pressed);
+  button_remesh_reset->set_w(200);
 
   // Add button to run single remeshing pass
   GLUI_Button * button_remesh_pass =

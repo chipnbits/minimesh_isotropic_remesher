@@ -51,7 +51,7 @@ Mesh_modifier_uniform_remeshing::remesh(double target_edge_length, int iteration
   for(int i = 0; i < iterations; ++i)
   {
     printf("Remeshing Iteration %d / %d\n", i + 1, iterations);
-    run_single_pass(target_edge_length, N_SMOOTHING_ITERS);
+    run_single_pass(target_edge_length, _n_smoothing_iters);
   }
   // End time
   auto end_time = std::chrono::high_resolution_clock::now();
@@ -141,7 +141,7 @@ Mesh_modifier_uniform_remeshing::remesh_to_target_edge_count(int target_edge_cou
         current_L,
         next_target_L);
 
-    run_single_pass(next_target_L, N_SMOOTHING_ITERS);
+    run_single_pass(next_target_L, _n_smoothing_iters);
 
     for(int he = 0; he < mesh().n_total_half_edges(); ++he)
     {
@@ -236,7 +236,7 @@ Mesh_modifier_uniform_remeshing::remesh_to_target_vertex_count(int target_vertex
         target_vertex_count,
         current_L,
         next_target_L);
-    run_single_pass(next_target_L, N_SMOOTHING_ITERS);
+    run_single_pass(next_target_L, _n_smoothing_iters);
     for(int v = 0; v < mesh().n_total_vertices(); ++v)
     {
       if(mesh().vertex_at(v).is_active())
@@ -454,7 +454,7 @@ Mesh_modifier_uniform_remeshing::tangential_smoothing(int smoothing_iters, Smoot
           // Apply movement
           // Scale the move so we don't jump too far (Relaxation step)
           // Converting metric imbalance back to Euclidean approximation for the step size
-          double step_size = imbalance * size_here * 0.5 * LAMBDA_SMOOTHING_DAMPING;
+          double step_size = imbalance * size_here * 0.5 * _lambda_smoothing_damping;
 
           // Safety: Don't move past the neighbor (prevent tangling)
           double max_dist = (metric_len0 > metric_len1) ? len0 : len1;
@@ -537,7 +537,7 @@ Mesh_modifier_uniform_remeshing::tangential_smoothing(int smoothing_iters, Smoot
 
       // Project move_vec onto tangent plane to stop volume changes
       Eigen::Vector3d tangential_move = move_vec - (move_vec.dot(normal)) * normal;
-      new_pos[vi] = old_pos + LAMBDA_SMOOTHING_DAMPING * tangential_move;
+      new_pos[vi] = old_pos + _lambda_smoothing_damping * tangential_move;
       needs_update[vi] = true;
     } // End of vertex loop
 
@@ -809,7 +809,7 @@ Mesh_modifier_uniform_remeshing::collapse_edge(int he_index, double threshold)
       new_pos = 0.5 * (v2_iter.xyz() + v1_iter.xyz()); // Midpoint for simple-simple case
   }
 
-  if(!is_legal_collapse(v1, v2, new_pos, UNCOLLAPSE_THRESHOLD_FACTOR * threshold))
+  if(!is_legal_collapse(v1, v2, new_pos, _uncollapse_threshold_factor * threshold))
     return false;
 
 
@@ -1329,7 +1329,7 @@ Mesh_modifier_uniform_remeshing::is_legal_flip(int he_index)
   auto n_new_A = (p_v1 - p_o1).cross(p_o2 - p_o1).normalized();
   auto n_new_B = (p_v2 - p_o2).cross(p_o1 - p_o2).normalized();
 
-  double min_dot = EDGE_FLIP_THRESHOLD_DOT;
+  double min_dot = _edge_flip_threshold_dot;
 
   if(n_new_A.dot(n_curr_1) < min_dot)
     return false;
@@ -1757,10 +1757,10 @@ Mesh_modifier_uniform_remeshing::mark_feature_edges_and_vertices()
 
   const int n_half_edges = mesh().n_total_half_edges();
   const int n_vertices = mesh().n_total_vertices();
-  const double cos_feature_angle_rad = std::cos(FEATURE_ANGLE_DEGREES * (M_PI / 180.0));
+  const double cos_feature_angle_rad = _feature_angle_cosine;
 
   printf("Marking feature edges with angle threshold: %f degrees (cosine: %f)\n",
-      FEATURE_ANGLE_DEGREES,
+      _feature_angle_degrees,
       cos_feature_angle_rad);
   printf("Total half-edges: %d, vertices: %d\n", n_half_edges, n_vertices);
 
