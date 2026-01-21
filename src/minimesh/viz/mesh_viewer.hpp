@@ -27,6 +27,11 @@ public:
 	void initialize(const Eigen::AlignedBox<float, 3> & bounding_box);
 
 	//
+	// Set the view to isometric
+	//
+	void set_isometric_view();
+
+	//
 	// Returns the mesh_buffer object associated with the viewer.
 	// If the mesh changes, you should call get_mesh_buffer().rebuild(mesh)
 	//

@@ -1,0 +1,242 @@
+// Implementation of Uniform Explicit Isotropic Remeshing
+// Based on Botsch and Kobbelt (2004) with additions from 
+// Tanja Munz Thesis (2015)
+#pragma once
+
+#include <Eigen/Core>
+#include <minimesh/core/mohe/mesh_connectivity.hpp>
+#include <set>
+#include <vector>
+
+namespace minimesh
+{
+namespace mohecore
+{
+
+class Mesh_modifier_uniform_remeshing
+{
+public:
+  Mesh_modifier_uniform_remeshing(Mesh_connectivity & mesh_in,
+                                   int n_smoothing_iters = 2,
+                                   double lambda_smoothing = 0.4,
+                                   double edge_flip_threshold = 0.8,
+                                   double uncollapse_factor = 1.3,
+                                   double feature_angle_deg = 25.0)
+  : _m(mesh_in),
+    _n_smoothing_iters(n_smoothing_iters),
+    _lambda_smoothing_damping(lambda_smoothing),
+    _edge_flip_threshold_dot(edge_flip_threshold),
+    _uncollapse_threshold_factor(uncollapse_factor),
+    _feature_angle_degrees(feature_angle_deg),
+    _feature_angle_cosine(cos(feature_angle_deg * M_PI / 180.0))
+  {
+    // run initialization
+    initialize();
+  }
+
+  enum class SmoothingType
+  {
+    Uniform, // simple averaging of neighbors
+    Barycenters // move to area weighted barycenter of incident faces
+  };
+
+  // Figure 3.14 https://nccastaff.bournemouth.ac.uk/jmacey/MastersProject/MSc15/08Tanja/
+  enum VertexFeatureType
+  {
+    SIMPLE = 0,
+    EDGE = 1, // Two incident feature edges
+    CORNER = 2 // 1 or more than 2 incident feature edges
+  };
+
+  struct GeometryCache
+  {
+    // Indexed by vertex index
+    std::vector<Eigen::Vector3d> vertex_normals;
+    // Indexed by face index
+    std::vector<Eigen::Vector3d> face_barycenters;
+    // Indexed by face index
+    std::vector<double> face_areas;
+    // Indexed by half-edge index originating from corner
+    std::vector<double> half_edge_angles;
+  };
+
+  // Get the underlying mesh
+  Mesh_connectivity & mesh() { return _m; }
+  const Mesh_connectivity & mesh() const { return _m; }
+
+  // Initialize the remesher - classifies feature edges and vertices for feature preservation
+  void initialize();
+
+  // Getters for feature lists to link to external display API
+  const std::vector<bool>& get_feature_edges() const { return _is_feature_edge; }
+  const std::vector<VertexFeatureType>& get_vertex_feature_types() const { return _vertex_feature_type; }
+
+  // Getters and setters for configurable parameters
+  int get_n_smoothing_iters() const { return _n_smoothing_iters; }
+  void set_n_smoothing_iters(int value) { _n_smoothing_iters = value; }
+
+  double get_lambda_smoothing_damping() const { return _lambda_smoothing_damping; }
+  void set_lambda_smoothing_damping(double value) { _lambda_smoothing_damping = value; }
+
+  double get_edge_flip_threshold_dot() const { return _edge_flip_threshold_dot; }
+  void set_edge_flip_threshold_dot(double value) { _edge_flip_threshold_dot = value; }
+
+  double get_uncollapse_threshold_factor() const { return _uncollapse_threshold_factor; }
+  void set_uncollapse_threshold_factor(double value) { _uncollapse_threshold_factor = value; }
+
+  double get_feature_angle_degrees() const { return _feature_angle_degrees; }
+  void set_feature_angle_degrees(double value)
+  {
+    _feature_angle_degrees = value;
+    _feature_angle_cosine = cos(value * M_PI / 180.0);
+  }
+
+  // Compute and get minimal angles per face (for quality visualization)
+  void compute_face_min_angles();
+  const std::vector<double>& get_face_min_angles() const { return _face_min_angles; }
+
+  // ============================================================
+  // Main Remeshing Functions
+  // ============================================================
+
+  // Automatic isotropic remeshing to target edge length
+  void remesh(double target_edge_length, int iterations = 5);
+
+  // Single pass of remeshing operations (for use with GUI or custom loops)
+  void run_single_pass(double target_edge_length, int tangential_smoothing_iters);
+
+  // Remesh to target edge count (approximate)
+  void remesh_to_target_edge_count(int target_edge_count, int iterations, const double rel_error_tol = .02);
+
+  // Remesh to target vertex count (approximate)
+  void remesh_to_target_vertex_count(int target_vertex_count, int iterations, const double rel_error_tol = .02);
+
+public:
+  // pointer to the mesh that we are working on.
+  Mesh_connectivity & _m;
+
+  // Default parameter values (const, used as defaults)
+  static constexpr int N_SMOOTHING_ITERS = 2;
+  static constexpr int INTERIOR_VALENCE = 6;
+  static constexpr int BOUNDARY_VALENCE = 4;
+  static constexpr double LAMBDA_SMOOTHING_DAMPING = 0.4;
+  static constexpr double EDGE_FLIP_THRESHOLD_DOT = 0.8;
+  static constexpr double UNCOLLAPSE_THRESHOLD_FACTOR = 1.3;
+  static constexpr double FEATURE_ANGLE_DEGREES = 25.0;
+
+private:
+  // Configurable parameter instances (set via constructor, can be changed)
+  int _n_smoothing_iters;
+  double _lambda_smoothing_damping;
+  double _edge_flip_threshold_dot;
+  double _uncollapse_threshold_factor;
+  double _feature_angle_degrees;
+  double _feature_angle_cosine;
+
+public:
+
+  // Property containers
+  std::vector<bool> _is_feature_edge;
+  std::vector<VertexFeatureType> _vertex_feature_type;
+  std::vector<double> _face_min_angles;  // Indexed by face index, stores min angle in radians
+  void ensure_property_containers_size() {
+    const std::size_t n_vertices =
+      static_cast<std::size_t>(mesh().n_total_vertices());
+    const std::size_t n_half_edges =
+      static_cast<std::size_t>(mesh().n_total_half_edges());
+    if (n_vertices > _vertex_feature_type.size()) {
+      _vertex_feature_type.resize(mesh().n_total_vertices(), SIMPLE);
+    }
+    if (n_half_edges > _is_feature_edge.size()) {
+      _is_feature_edge.resize(mesh().n_total_half_edges(), false);
+    }
+  }
+
+  // ============================================================
+  // Core Remeshing Operations
+  // ============================================================
+
+  //
+  // 1. Edge Splitting
+  // Iterates over all edges. If edge_length > target_length*alpha the edge is split at its midpoint. Lit value is 4/3.
+  void split_long_edges(double target_length, double alpha = 4.0 / 3.0);
+
+  //
+  // 2. Edge Collapsing
+  // Iterates over all edges. If edge_length < beta * target_length, the edge is collapsed. Lit value is 4/5.
+  void collapse_short_edges(double target_length, double beta = 4.0 / 5.0);
+
+  //
+  // 3. Edge Flipping
+  // Flips edges to improve vertex valence towards the ideal values listed above.
+  void flip_edges_to_optimize_valence();
+
+  //
+  // 4. Vertex Smoothing
+  // Applies tangential smoothing to redistribute vertices for better mesh quality. 
+  // Respects feature vertices and moves tangential to vertex normals.
+  void tangential_smoothing(int smoothing_iters = 1, SmoothingType type = SmoothingType::Barycenters);
+
+  // ============================================================
+  // Low-Level Mesh Modifiers
+  // ============================================================
+
+  // Splits a specific edge (given by half-edge index) at a weighted position along the edge.
+  // weight = 0.0 gives the origin vertex, weight = 1.0 gives the destination vertex, weight = 0.5 gives the midpoint.
+  // Returns the index of the new vertex, or -1 on failure.
+  int split_edge(int he_index, double weight = 0.5);
+
+  // Collapses the edge defined by he_index (collapses origin into destination).
+  // Returns true if successful.
+  bool collapse_edge(int he_index, double threshold);
+
+  // Flips the edge shared by the two triangles adjacent to he_index.
+  // Returns true if successful.
+  bool flip_edge(int he_index);
+  // ============================================================
+  // Helpers & Topology Checks
+  // ============================================================
+
+  double get_edge_length(int he_index) const;
+  int get_vertex_valence(int v_index) const;
+
+  // Calculates the deviation of valence from ideal vals
+  int get_valence_deviation(int v_index) const;
+
+  // Determines if flipping the edge would improve valence deviation
+  bool should_flip_edge(int he_index);
+
+  // Checks edge collapse legality according to Botsch & Kobbelt criteri and length threshold
+  bool is_legal_collapse(int v1, int v2, Eigen::Vector3d new_pos, double threshold);
+
+  // Check edge flip legality according to Botsch & Kobbelt criteria
+  bool is_legal_flip(int he_index);
+
+  // Helper to get all neighbors of a vertex as a set (for collapse legality checks)
+  std::set<int> get_all_neighbors_from_vertex(int v_index) const;
+
+  // Helper to relabel all half-edges originating from old_id to new_id
+  void relabel_vertex(int old_id, int new_id);
+
+  // Helper to find specific half-edge between vertices
+  int get_halfedge_between_vertices(const int v0, const int v1);
+
+  // Helper to get all neighbors of a vertex 
+  std::vector<int> get_one_ring_neighbors(int v_index) const;
+
+  // Compute a surface normal given three points in ccw cycle order
+  Eigen::Vector3d calculate_normal(const Eigen::Vector3d & p0,
+      const Eigen::Vector3d & p1,
+      const Eigen::Vector3d & p2) const;
+
+  // Precompute geometry information for the current mesh state
+  GeometryCache compute_geometry_cache();
+
+  // Classify vertices based on incident feature edges, assumes feature edges are marked
+  VertexFeatureType classify_vertex_feature_type(int v_index);
+
+  // initialize feature edges and vertices
+  void mark_feature_edges_and_vertices();
+};
+} // end of mohecore
+} // end of minimesh

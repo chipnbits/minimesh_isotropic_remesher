@@ -479,7 +479,6 @@ void Mesh_modifier_edge_collapse::relabel_vertex(int old_id, int new_id)
     he.data().origin = new_id;
     he = he.twin().next();
   } while(he.index() != he_start_index);
-
 }
 
 //

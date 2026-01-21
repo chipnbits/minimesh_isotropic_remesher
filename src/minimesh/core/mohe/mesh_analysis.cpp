@@ -66,6 +66,19 @@ int count_connected_components(Mesh_connectivity& mesh)
 	return components;
 }
 
+	int vertex_valence(Mesh_connectivity& mesh, int vertex_id)
+	{
+		int valence = 0;
+		auto ring = mesh.vertex_ring_at(vertex_id);
+		do { valence++; } while (ring.advance());
+		return valence;
+	}
+
+	bool vertex_is_boundary(Mesh_connectivity& mesh, int vertex_id)
+	{
+		auto ring = mesh.vertex_ring_at(vertex_id);
+		return ring.reset_boundary();
+	}
 } // end of analysis
 } // end of mohecore
 } // end of minimesh

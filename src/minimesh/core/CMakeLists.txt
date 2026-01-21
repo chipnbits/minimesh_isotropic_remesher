@@ -37,6 +37,11 @@ set(SOURCE_FILES
   mohe/fixed_uv_param.cpp
   mohe/lscm_uv_param.hpp
   mohe/lscm_uv_param.cpp
+  ##
+  ## REMESHER (Course Project)
+  ##
+  mohe/remesher/remesher_isotropic.hpp
+  mohe/remesher/remesher_isotropic.cpp
  )
 
  

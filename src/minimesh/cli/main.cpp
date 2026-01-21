@@ -11,19 +11,21 @@
 #include <cmath>
 #include <cstdio>
 #include <string>
+#include <unistd.h>
 #include <unordered_map>
 
 #include <minimesh/core/util/assert.hpp>
 #include <minimesh/core/util/macros.hpp>
 
+#include <minimesh/core/mohe/fixed_uv_param.hpp>
+#include <minimesh/core/mohe/lscm_uv_param.hpp>
 #include <minimesh/core/mohe/mesh_analysis.hpp>
 #include <minimesh/core/mohe/mesh_connectivity.hpp>
 #include <minimesh/core/mohe/mesh_io.hpp>
 #include <minimesh/core/mohe/mesh_modifier_arap.hpp>
 #include <minimesh/core/mohe/mesh_modifier_edge_collapse.hpp>
 #include <minimesh/core/mohe/mesh_modifier_loop_subdivision.hpp>
-#include <minimesh/core/mohe/fixed_uv_param.hpp>
-#include <minimesh/core/mohe/lscm_uv_param.hpp>
+#include <minimesh/core/mohe/remesher/remesher_isotropic.hpp>
 
 using namespace minimesh;
 
@@ -132,9 +134,11 @@ main(int argc, char ** argv)
   mohecore::Mesh_connectivity mesh;
   mohecore::Mesh_io io(mesh);
 
-  // Check if filename provided as argument
+  // Parse command-line arguments
   std::string filename;
-  std::string algorithm = "fixed";
+  double target_edge_length = 0.05;
+  int num_iterations = 20;
+
   if(argc > 1)
   {
     filename = argv[1];
@@ -142,14 +146,23 @@ main(int argc, char ** argv)
   }
   else
   {
-    // Default behavior - use camel_simple.obj for testing
-    filename = "./hw4_mesh/cat.obj";
-    printf("No filename provided, using default: %s\n", filename.c_str());
+    printf("Usage: %s <mesh_file> [target_edge_length] [num_iterations]\n", argv[0]);
+    printf("  mesh_file: Path to .obj mesh file\n");
+    printf("  target_edge_length: Target edge length for remeshing (default: 0.05)\n");
+    printf("  num_iterations: Number of remeshing iterations (default: 20)\n");
+    return 1;
   }
-  if (argc > 2)
+
+  if(argc > 2)
   {
-    algorithm = argv[2];
-    printf("Using algorithm: %s\n", algorithm.c_str());
+    target_edge_length = std::atof(argv[2]);
+    printf("Using target edge length: %f\n", target_edge_length);
+  }
+
+  if(argc > 3)
+  {
+    num_iterations = std::atoi(argv[3]);
+    printf("Using num iterations: %d\n", num_iterations);
   }
 
   // Read the specified mesh file
@@ -160,51 +173,44 @@ main(int argc, char ** argv)
   printf("Total faces: %d \n", mesh.n_active_faces());
   printf("Total half-edges: %d \n", mesh.n_active_half_edges());
 
-  if (algorithm == "fixed")
-  {
-    // Create a UV parameterization object
-    mohecore::Fixed_boundary_uv_param uv_param(mesh);
+  mohecore::Mesh_modifier_uniform_remeshing remesher(mesh);
 
-    uv_param.compute_parameterization();
+  remesher.remesh(target_edge_length, num_iterations);
 
-    // overwrite coords into the 2D plane
-    for(int v = 0; v < mesh.n_total_vertices(); ++v)
-    {
-      mohecore::Mesh_connectivity::Vertex_iterator vertex = mesh.vertex_at(v);
-      if(vertex.is_active())
-      {
-        Eigen::Vector2d uv = uv_param.get_uv_at_vertex(vertex.index());
-        vertex.data().xyz = Eigen::Vector3d(uv[0], uv[1], 0.0);
-      }
-    }
-  }
-  else if (algorithm == "lscm")
-  {
-    // Create a UV parameterization object
-    mohecore::LSCM_uv_param uv_param(mesh, mohecore::LSCM_uv_param::PinningStrategy::MAX_DISTANCE);
-    uv_param.compute_parameterization();
-
-    for (int v = 0; v < mesh.n_total_vertices(); ++v)
-    {
-      mohecore::Mesh_connectivity::Vertex_iterator vertex = mesh.vertex_at(v);
-      if(vertex.is_active())
-      {
-        Eigen::Vector2d uv = uv_param.get_uv_at_vertex(vertex.index());
-        vertex.data().xyz = Eigen::Vector3d(uv[0], uv[1], 0.0);
-      }
-    }
-  }
-  else
-  {
-    printf("Unknown algorithm: %s\n", algorithm.c_str());
-    return -1;
-  }
   // Reuse the same filename but to export the result (take only filename without path or .obj)
   std::string mesh_out_path = filename.substr(filename.find_last_of("/\\") + 1);
   mesh_out_path = mesh_out_path.substr(0, mesh_out_path.find_last_of('.'));
-  mesh_out_path = mesh_out_path + "_cli";
-  write_mesh_checked(mesh, io, mesh_out_path, nullptr, false);
+
+  // Format the edge length with appropriate precision
+  char length_str[32];
+  snprintf(length_str, sizeof(length_str), "%.3f", target_edge_length);
+  mesh_out_path = mesh_out_path + "_" + std::string(length_str) + "_cli";
+
+  std::string saved_obj_path = write_mesh_checked(mesh, io, mesh_out_path, nullptr, false);
+
+  // Display in the main GUI the saved file
+  printf("Launching GUI with saved mesh and isometric view...\n");
+
+  // Build the command to launch the GUI with isometric view flag
+  // Use the actual executable path instead of the alias
+  std::string gui_executable = "build-dbg/bin/minimeshgui";
+  // Fall back to debug build if optimized build doesn't exist
+  if(access("build-opt/bin/minimeshgui", X_OK) != 0)
+  {
+    gui_executable = "build-dbg/bin/minimeshgui";
+  }
+
+  std::string gui_command = gui_executable + " \"" + saved_obj_path + "\" ";
+  int result = system(gui_command.c_str());
+
+  if(result == 0)
+  {
+    printf("GUI launched successfully\n");
+  }
+  else
+  {
+    printf("Warning: GUI launch returned code %d\n", result);
+  }
 
   return 0;
 } // end of main()
-

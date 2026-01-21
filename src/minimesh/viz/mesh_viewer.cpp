@@ -281,7 +281,7 @@ void Mesh_viewer::draw()
 
 	// Draw the spheres
 	{
-		glPointSize(15); gl_check_error();
+		glPointSize(10); gl_check_error();  // Increased size for better visibility
 		for(int i = 0; i < (int)_mesh_buffer.spheres_vertex_indices.size(); ++i)
 		{
 			Eigen::Vector3f vv = _mesh_buffer.vertices.col(_mesh_buffer.spheres_vertex_indices(i));
@@ -290,6 +290,24 @@ void Mesh_viewer::draw()
 			glVertex3fv(vv.data()); gl_check_error();
 			gl_end(); gl_check_error();
 		}
+	}
+
+	// DEBUG: Draw colored edges (for feature edge visualization)
+	if(_mesh_buffer.debug_edge_indices.size() > 0)
+	{
+		glLineWidth(3); gl_check_error();  // Thicker lines for visibility
+		gl_begin(GL_LINES); gl_check_error();
+		for(int i = 0; i < (int)_mesh_buffer.debug_edge_indices.size(); ++i)
+		{
+			int edge_idx = _mesh_buffer.debug_edge_indices(i);
+			Eigen::VectorXi vids = _mesh_buffer.edge_conn.col(edge_idx);
+			Eigen::Vector3f v0 = _mesh_buffer.vertices.col(vids[0]);
+			Eigen::Vector3f v1 = _mesh_buffer.vertices.col(vids[1]);
+			glColor4fv(_mesh_buffer.debug_edge_colors.col(i).data()); gl_check_error();
+			glVertex3fv(v0.data()); gl_check_error();
+			glVertex3fv(v1.data()); gl_check_error();
+		}
+		gl_end(); gl_check_error();
 	}
 
 	// ==== BEGIN 2-D Stuff
@@ -552,6 +570,30 @@ void Mesh_viewer::get_and_clear_vertex_displacement(bool & was_displaced, Eigen:
 Eigen::Quaternionf Mesh_viewer::get_view_quaternion()
 {
 	return Eigen::Quaternionf(_view_quaternion.data());
+}
+
+
+void Mesh_viewer::set_isometric_view()
+{
+	// Create an isometric view by combining two rotations:
+	// 1. Rotate 45 degrees around Y axis
+	// 2. Rotate arctan(1/sqrt(2)) ≈ 35.26 degrees around X axis
+
+	const float pi = 3.14159265358979323846f;
+	const float angle_y = pi / 4.0f;  // 45 degrees
+	const float angle_x = std::atan(1.0f / std::sqrt(2.0f));  // ~35.26 degrees
+
+	Eigen::Quaternionf qy(Eigen::AngleAxisf(angle_y, Eigen::Vector3f::UnitY()));
+	Eigen::Quaternionf qx(Eigen::AngleAxisf(angle_x, Eigen::Vector3f::UnitX()));
+
+	// Combine rotations: first Y, then X
+	Eigen::Quaternionf iso_quat = qy * qx;
+
+	// Store in the view quaternion (x, y, z, w format)
+	_view_quaternion = iso_quat.coeffs();
+
+	printf("Isometric view set: quat = (%.4f, %.4f, %.4f, %.4f)\n",
+	       _view_quaternion[0], _view_quaternion[1], _view_quaternion[2], _view_quaternion[3]);
 }
 
 
