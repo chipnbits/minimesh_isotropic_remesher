@@ -1,7 +1,6 @@
 # 3D Mesh Uniform Isotropic Remeshing
 
 **Author:** Simon Ghyselincks
-**Student Number:** 12145124
 
 ## Overview Summary
 
